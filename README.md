@@ -9,3 +9,7 @@ or just report wrong public ip addresses) - during this period the script will s
 Also this script supports only IPv4 for now.
 
 When you run the script for the first time it will create a new file `config.ini`, which you'll need to fill!
+
+Make sure to also install the following packages:
+* `ipgetter2`
+* `ipaddress`
