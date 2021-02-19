@@ -1,6 +1,6 @@
 from ipgetter2 import IPGetter
 from urllib.request import Request, urlopen
-from os.path import exists
+import os
 import json
 import time
 import ipaddress
@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 
 # Config stuff
 config = configparser.ConfigParser(allow_no_value=True)
-if exists('config.ini') == False:
+os.makedirs('config', exist_ok=True)
+configPath = os.path.join('config', 'config.ini')
+if os.path.exists(configPath) == False:
     config['Cloudflare'] = {
         '# Open the overview of the domain and look bottom-right...': None,
         'zone_id': '',
@@ -44,11 +46,11 @@ if exists('config.ini') == False:
         '# TTL to be applied to dynamic_cname when this is active (higher to prevent clients constantly switching when the network is bad)': None,
         'TTL': '300'
     }
-    with open('config.ini', 'w') as configfile:
+    with open(configPath, 'w') as configfile:
         config.write(configfile)
-        logger.info('Missing config.ini -> written default one.')
+        logger.info('Missing ' + configPath + ' -> written default one.')
         exit(0)
-config.read('config.ini')
+config.read(configPath)
 
 if config.getboolean('General', 'debug'):
     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG, force=True)
