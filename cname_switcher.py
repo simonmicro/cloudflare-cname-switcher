@@ -138,6 +138,6 @@ try:
         logger.debug('Sleeping...')
         time.sleep(int(config['General']['update_interval']))
 except KeyboardInterrupt:
-    break
+    pass
         
 logger.info('Bye!')
