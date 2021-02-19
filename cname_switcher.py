@@ -82,62 +82,62 @@ getter = IPGetter()
 getter.timeout = int(config['General']['external_timeout'])
 primaryConfidence = int(int(config['Primary']['confidence']) / 2)
 primaryActive = False
-while True:
-    # Get the external ip and validate primary cname allowance
-    try:
-        logger.debug('Resolving external IPv4...')
-        externalIPv4 = ipaddress.ip_address(str(getter.get().v4))
-        if externalIPv4 in ipaddress.ip_network(config['Primary']['subnet']):
-            primaryConfidence += 1
-        else:
-            primaryConfidence = 0
-    except Exception as e:
-        logger.warning('External IPv4 resolve error: ' + str(e))
-        primaryConfidence = 0
-
-    # And update the dns entry of Cloudflare...
-    def updateDynamicCname(config, data):
+try:
+    while True:
+        # Get the external ip and validate primary cname allowance
         try:
-            urlopen(Request(
-                'https://api.Cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records/' + CloudflareDnsRecordId,
-                method='PUT',
-                data=bytes(json.dumps(data), encoding='utf8'),
-                headers={
-                    'Authorization': 'Bearer ' + config['Cloudflare']['token'],
-                    'Content-Type': 'application/json'
-                }
-            ))
-            logger.info('Updated ' + config['General']['dynamic_cname'] + ' to ' + data['content'])
+            logger.debug('Resolving external IPv4...')
+            externalIPv4 = ipaddress.ip_address(str(getter.get().v4))
+            if externalIPv4 in ipaddress.ip_network(config['Primary']['subnet']):
+                primaryConfidence += 1
+            else:
+                primaryConfidence = 0
         except Exception as e:
-            logger.warning('Cloudflare CNAME update error: ' + str(e))
+            logger.warning('External IPv4 resolve error: ' + str(e))
+            primaryConfidence = 0
 
-    if primaryConfidence == int(config['Primary']['confidence']) and not primaryActive:
-        data = {
-            'type': 'CNAME',
-            'name': config['General']['dynamic_cname'],
-            'content': config['Primary']['cname'],
-            'ttl': int(config['Primary']['ttl']),
-            'proxied': False
-        }
-        updateDynamicCname(config, data)
-        primaryActive = True
-    elif primaryConfidence == 0 and primaryActive:
-        data = {
-            'type': 'CNAME',
-            'name': config['General']['dynamic_cname'],
-            'content': config['Secondary']['cname'],
-            'ttl': int(config['Secondary']['ttl']),
-            'proxied': False
-        }
-        updateDynamicCname(config, data)
-        primaryActive = False
-    logger.debug('primaryConfidence? ' + str(primaryConfidence))
-    
-    # Wait until next check...
-    logger.debug('Sleeping...')
-    try:
+        # And update the dns entry of Cloudflare...
+        def updateDynamicCname(config, data):
+            try:
+                urlopen(Request(
+                    'https://api.Cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records/' + CloudflareDnsRecordId,
+                    method='PUT',
+                    data=bytes(json.dumps(data), encoding='utf8'),
+                    headers={
+                        'Authorization': 'Bearer ' + config['Cloudflare']['token'],
+                        'Content-Type': 'application/json'
+                    }
+                ))
+                logger.info('Updated ' + config['General']['dynamic_cname'] + ' to ' + data['content'])
+            except Exception as e:
+                logger.warning('Cloudflare CNAME update error: ' + str(e))
+
+        if primaryConfidence == int(config['Primary']['confidence']) and not primaryActive:
+            data = {
+                'type': 'CNAME',
+                'name': config['General']['dynamic_cname'],
+                'content': config['Primary']['cname'],
+                'ttl': int(config['Primary']['ttl']),
+                'proxied': False
+            }
+            updateDynamicCname(config, data)
+            primaryActive = True
+        elif primaryConfidence == 0 and primaryActive:
+            data = {
+                'type': 'CNAME',
+                'name': config['General']['dynamic_cname'],
+                'content': config['Secondary']['cname'],
+                'ttl': int(config['Secondary']['ttl']),
+                'proxied': False
+            }
+            updateDynamicCname(config, data)
+            primaryActive = False
+        logger.debug('primaryConfidence? ' + str(primaryConfidence))
+        
+        # Wait until next check...
+        logger.debug('Sleeping...')
         time.sleep(int(config['General']['update_interval']))
-    except KeyboardInterrupt:
-        break
+except KeyboardInterrupt:
+    break
         
 logger.info('Bye!')
