@@ -7,3 +7,5 @@ Also the default configuration will tend to prefer the secondary (with higher TT
 _Please note:_ This script uses a ton of external ip providers and it can take up to 24 hours after starting until they are rated properly (some tend to be unavailable
 or just report wrong public ip addresses) - during this period the script will switch without reason between primary and secondary!
 Also this script supports only IPv4 for now.
+
+When you run the script for the first time it will create a new file `config.ini`, which you'll need to fill!
