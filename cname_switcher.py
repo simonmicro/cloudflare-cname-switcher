@@ -65,10 +65,13 @@ request = Request(
         }
     )
 CloudflareDnsRecordId = None
-for dns in json.load(urlopen(request))['result']:
-    if dns['name'] == config['General']['dynamic_cname']:
-        CloudflareDnsRecordId = dns['id']
-        break
+try:
+    for dns in json.load(urlopen(request))['result']:
+        if dns['name'] == config['General']['dynamic_cname']:
+            CloudflareDnsRecordId = dns['id']
+            break
+except:
+    pass
 if CloudflareDnsRecordId is None:
     logger.critical('Could not resolve ' + config['General']['dynamic_cname'] + ' to a Cloudflare dns id!')
     exit(1)
