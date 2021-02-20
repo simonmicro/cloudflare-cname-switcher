@@ -23,7 +23,7 @@ if os.path.exists(configPath) == False:
     config['General'] = {
         '# Enable this when something does not work...': None,
         'debug': 'false',
-        '# This CNAME will by updated when the external ip leaves the primary subnet': None,
+        '# This CNAME will by updated when the external ip leaves the primary subnet or enters the secondary subnet': None,
         'dynamic_cname': 'dyn.example.com',
         '# Please note the Client API are rate-limited by Cloudflare account to 1200 requests every 5 minutes': None,
         'update_interval': '30',
@@ -33,7 +33,10 @@ if os.path.exists(configPath) == False:
     config['Primary'] = {
         '# E.g. primary cable line': None,
         'CNAME': 'wan1.example.com',
-        '# Commonly found by try-and-error': None,
+        '# Commonly found by try-and-error - the following modes are supported:': None,
+        '# - Only Primary.Subnet: Switch to primary when external IP enters it long enough.': None,
+        '# - Only Secondary.Subnet: Switch to secondary when external IP enters it.': None,
+        '# - Both subnets: Switch to primary when external IP enters it long enough and switch to secondary when external IP enters it. Otherwise do nothing.': None,
         'Subnet': '88.42.0.0/24',
         '# TTL to be applied to dynamic_cname when this is active': None,
         'TTL': '60',
@@ -43,6 +46,8 @@ if os.path.exists(configPath) == False:
     config['Secondary'] = {
         '# E.g. the fallback over mobile network': None,
         'CNAME': 'wan2.example.com',
+        '# Commonly found by try-and-error (set to \'no\' to disable)': None,
+        'Subnet': 'no',
         '# TTL to be applied to dynamic_cname when this is active (higher to prevent clients constantly switching when the network is bad)': None,
         'TTL': '300'
     }
@@ -82,16 +87,28 @@ getter = IPGetter()
 getter.timeout = int(config['General']['external_timeout'])
 primaryConfidence = int(int(config['Primary']['confidence']) / 2)
 primaryActive = False
+primarySubnetSet = config['Primary']['subnet'] != 'no'
+secondarySubnetSet = config['Secondary']['subnet'] != 'no'
+if primarySubnetSet:
+    primarySubnet = ipaddress.ip_network(config['Primary']['subnet'])
+if secondarySubnetSet:
+    secondarySubnet = ipaddress.ip_network(config['Secondary']['subnet'])
+bothSubnetSet = not (primarySubnetSet ^ secondarySubnetSet)
 try:
     while True:
         # Get the external ip and validate primary cname allowance
         try:
             logger.debug('Resolving external IPv4...')
             externalIPv4 = ipaddress.ip_address(str(getter.get().v4))
-            if externalIPv4 in ipaddress.ip_network(config['Primary']['subnet']):
+            externalIsPrimary = primarySubnetSet and externalIPv4 in primarySubnet
+            externalIsSecondary = secondarySubnetSet and externalIPv4 in secondarySubnet
+            if primarySubnetSet and externalIsPrimary or (secondarySubnetSet and not externalIsSecondary and not bothSubnetSet):
                 primaryConfidence += 1
-            else:
+            elif secondarySubnetSet and externalIsSecondary or (primarySubnetSet and not externalIsPrimary and not bothSubnetSet):
                 primaryConfidence = 0
+            else:
+                logger.warning('External IP (' + str(externalIPv4) + ') is in neither the primary (' + str(primarySubnet) + ') nor the secondary (' + str(secondarySubnet) + ') subnet -> ignoring...')
+            logger.debug('External IP is ' + str(externalIPv4))
         except Exception as e:
             logger.warning('External IPv4 resolve error: ' + str(e))
             primaryConfidence = 0
