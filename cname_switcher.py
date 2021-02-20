@@ -28,7 +28,9 @@ if os.path.exists(configPath) == False:
         '# Please note the Client API are rate-limited by Cloudflare account to 1200 requests every 5 minutes': None,
         'update_interval': '30',
         '# We\'ll try to get the external ip from up to 3 servers, each with a time of x': None,
-        'external_timeout': '10'
+        'external_timeout': '10',
+        '# You can here specify e.g. \'http://icanhazip.com/\' to enforce using only one specific resolver (in case the \'default\' are too unstable)...': None,
+        'external_resolver': 'default'
     }
     config['Primary'] = {
         '# E.g. primary cable line': None,
@@ -99,7 +101,10 @@ try:
         # Get the external ip and validate primary cname allowance
         try:
             logger.debug('Resolving external IPv4...')
-            externalIPv4 = ipaddress.ip_address(str(getter.get().v4))
+            if config['General']['external_resolver'] == 'default':
+                externalIPv4 = ipaddress.ip_address(str(getter.get().v4))
+            else:
+                externalIPv4 = ipaddress.ip_address(str(getter.get_from(config['General']['external_resolver']).v4))
             externalIsPrimary = primarySubnetSet and externalIPv4 in primarySubnet
             externalIsSecondary = secondarySubnetSet and externalIPv4 in secondarySubnet
             if primarySubnetSet and externalIsPrimary or (secondarySubnetSet and not externalIsSecondary and not bothSubnetSet):
