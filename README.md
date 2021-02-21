@@ -13,3 +13,5 @@ When you run the script for the first time it will create a new file `config.ini
 Make sure to also install the following packages:
 * `ipgetter2`
 * `ipaddress`
+
+Also this script can update an other dns a-record to point to the current external ip.
