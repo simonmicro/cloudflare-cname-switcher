@@ -32,6 +32,12 @@ if os.path.exists(configPath) == False:
         '# You can here specify e.g. \'http://icanhazip.com/\' to enforce using only one specific resolver (in case the \'default\' are too unstable)...': None,
         'external_resolver': 'default'
     }
+    config['DynDns'] = {
+        '# A record to store the current IPv4 to (set to \'no\' to disable)': None,
+        'dyndns_target': 'no',
+        '# TTL to be applied to dyndns_target': None,
+        'dyndns_ttl': '60'
+    }
     config['Primary'] = {
         '# E.g. primary cable line': None,
         'CNAME': 'wan1.example.com',
@@ -62,27 +68,36 @@ config.read(configPath)
 if config.getboolean('General', 'debug'):
     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG, force=True)
 
+def resolveNameToRecordId(config, name):
+    request = Request(
+        'https://api.Cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records?name=' + name,
+        method='GET',
+        headers={
+            'Authorization': 'Bearer ' + config['Cloudflare']['token'],
+            'Content-Type': 'application/json'
+            }
+        )
+    CloudflareDnsRecordId = None
+    try:
+        for dns in json.load(urlopen(request))['result']:
+            if dns['name'] == name:
+                logger.debug(name + ' is ' + dns['id'])
+                return dns['id']
+    except:
+        pass
+    return None
+
 # Resolve the dynamic_cname to a dns entry id of Cloudflare
-request = Request(
-    'https://api.Cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records?name=' + config['General']['dynamic_cname'],
-    method='GET',
-    headers={
-        'Authorization': 'Bearer ' + config['Cloudflare']['token'],
-        'Content-Type': 'application/json'
-        }
-    )
-CloudflareDnsRecordId = None
-try:
-    for dns in json.load(urlopen(request))['result']:
-        if dns['name'] == config['General']['dynamic_cname']:
-            CloudflareDnsRecordId = dns['id']
-            break
-except:
-    pass
+CloudflareDnsRecordId = resolveNameToRecordId(config, config['General']['dynamic_cname'])
 if CloudflareDnsRecordId is None:
     logger.critical('Could not resolve ' + config['General']['dynamic_cname'] + ' to a Cloudflare dns id!')
     exit(1)
-logger.debug(config['General']['dynamic_cname'] + ' is ' + CloudflareDnsRecordId)
+CloudflareDynDnsRecordId = None
+if config['DynDns']['dyndns_target'] != 'no':
+    CloudflareDynDnsRecordId = resolveNameToRecordId(config, config['DynDns']['dyndns_target'])
+    if CloudflareDnsRecordId is None:
+        logger.critical('Could not resolve ' + config['DynDns']['dyndns_target'] + ' to a Cloudflare dns id!')
+        exit(2)
 
 logger.info('Startup complete.')
 getter = IPGetter()
@@ -96,6 +111,7 @@ if primarySubnetSet:
 if secondarySubnetSet:
     secondarySubnet = ipaddress.ip_network(config['Secondary']['subnet'])
 bothSubnetSet = not (primarySubnetSet ^ secondarySubnetSet)
+oldExternalIPv4 = None
 try:
     while True:
         # Get the external ip and validate primary cname allowance
@@ -105,6 +121,31 @@ try:
                 externalIPv4 = ipaddress.ip_address(str(getter.get().v4))
             else:
                 externalIPv4 = ipaddress.ip_address(str(getter.get_from(config['General']['external_resolver']).v4))
+            
+            # Update the cname to the external ip...
+            if CloudflareDynDnsRecordId is not None and oldExternalIPv4 != externalIPv4:
+                try:
+                    data = {
+                        'type': 'A',
+                        'name': config['DynDns']['dyndns_target'],
+                        'content': str(externalIPv4),
+                        'ttl': config['DynDns']['dyndns_ttl'],
+                        'proxied': False
+                    }
+                    urlopen(Request(
+                        'https://api.Cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records/' + CloudflareDynDnsRecordId,
+                        method='PUT',
+                        data=bytes(json.dumps(data), encoding='utf8'),
+                        headers={
+                            'Authorization': 'Bearer ' + config['Cloudflare']['token'],
+                            'Content-Type': 'application/json'
+                        }
+                    ))
+                    logger.info('Updated ' + config['DynDns']['dyndns_target'] + ' to ' + data['content'])
+                except Exception as e:
+                    logger.warning('Cloudflare DynDns-CNAME update error: ' + str(e))
+            oldExternalIPv4 = externalIPv4
+            
             externalIsPrimary = primarySubnetSet and externalIPv4 in primarySubnet
             externalIsSecondary = secondarySubnetSet and externalIPv4 in secondarySubnet
             if primarySubnetSet and externalIsPrimary or (secondarySubnetSet and not externalIsSecondary and not bothSubnetSet):
@@ -132,7 +173,7 @@ try:
                 ))
                 logger.info('Updated ' + config['General']['dynamic_cname'] + ' to ' + data['content'])
             except Exception as e:
-                logger.warning('Cloudflare CNAME update error: ' + str(e))
+                logger.warning('Cloudflare Dns-CNAME update error: ' + str(e))
 
         if primaryConfidence == int(config['Primary']['confidence']) and not primaryActive:
             data = {
