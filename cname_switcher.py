@@ -45,7 +45,7 @@ if os.path.exists(configPath) == False:
         '# - Only Primary.Subnet: Switch to primary when external IP enters it long enough.': None,
         '# - Only Secondary.Subnet: Switch to secondary when external IP enters it.': None,
         '# - Both subnets: Switch to primary when external IP enters it long enough and switch to secondary when external IP enters it. Otherwise do nothing.': None,
-        'Subnet': '88.42.0.0/24',
+        'Subnet': '88.42.1.0/24',
         '# TTL to be applied to dynamic_cname when this is active': None,
         'TTL': '60',
         '# Amount of successful checks needed, until we switch back to primary from secondary': None,
