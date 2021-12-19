@@ -188,8 +188,9 @@ try:
                 req = Request('https://api.telegram.org/bot' + config['Telegram']['token'] + '/sendMessage', method='POST')
                 req.add_header('Content-Type', 'application/json')
                 data = {
+                    'parse_mode': 'MarkdownV2',
                     'chat_id': config['Telegram']['target'],
-                    'text': message
+                    'text': message.replace('.', '\\.')
                 }
                 data = json.dumps(data)
                 data = data.encode()
@@ -207,7 +208,7 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
-            sendTelegramNotification('Primary network connection STABLE. Failover INACTIVE. Current IPv4 is ' + str(externalIPv4) + '.')
+            sendTelegramNotification('Primary network connection *STABLE*. Failover INACTIVE. Current IPv4 is `' + str(externalIPv4) + '`.')
             primaryActive = True
         elif primaryConfidence == 0 and primaryActive:
             data = {
@@ -218,7 +219,7 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
-            sendTelegramNotification('Primary network connection FAILED. Failover ACTIVE. Current IPv4 is ' + str(externalIPv4) + '.')
+            sendTelegramNotification('Primary network connection *FAILED*. Failover ACTIVE. Current IPv4 is `' + str(externalIPv4) + '`.')
             primaryActive = False
         logger.debug('primaryConfidence? ' + str(primaryConfidence))
         
