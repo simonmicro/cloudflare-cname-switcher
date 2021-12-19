@@ -184,7 +184,7 @@ try:
             if config['Telegram']['token'] == 'no':
                 return
             try:
-                req = request.Request('https://api.telegram.org/bot' + config['Telegram']['token'] + '/sendMessage', method='POST')
+                req = Request('https://api.telegram.org/bot' + config['Telegram']['token'] + '/sendMessage', method='POST')
                 req.add_header('Content-Type', 'application/json')
                 data = {
                     'chat_id': config['Telegram']['target'],
@@ -192,7 +192,7 @@ try:
                 }
                 data = json.dumps(data)
                 data = data.encode()
-                request.urlopen(req, timeout=10, data=data)
+                urlopen(req, timeout=10, data=data)
                 logger.info('Sent Telegram notification successfully')
             except Exception as e:
                 logger.warning('Telegram notification error: ' + str(e))
