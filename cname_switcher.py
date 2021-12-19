@@ -32,6 +32,12 @@ if os.path.exists(configPath) == False:
         '# You can here specify e.g. \'http://icanhazip.com/\' to enforce using only one specific resolver (in case the \'default\' are too unstable)...': None,
         'external_resolver': 'default'
     }
+    config['Telegram'] = {
+        '# Set the bot token here (set to \'no\' to disable)': None,
+        'token': 'no',
+        '# Set the chat id here': None,
+        'target': '10239482309'
+    }
     config['DynDns'] = {
         '# A record to store the current IPv4 to (set to \'no\' to disable)': None,
         'dyndns_target': 'no',
@@ -174,6 +180,21 @@ try:
                 logger.info('Updated ' + config['General']['dynamic_cname'] + ' to ' + data['content'])
             except Exception as e:
                 logger.warning('Cloudflare Dns-CNAME update error: ' + str(e))
+        def sendTelegramNotification(message):
+            if config['Telegram']['token'] == 'no':
+                return
+            try:
+                req = request.Request('https://api.telegram.org/bot' + config['Telegram']['token'] + '/sendMessage', method='POST')
+                req.add_header('Content-Type', 'application/json')
+                data = {
+                    'chat_id': config['Telegram']['target'],
+                    'text': message
+                }
+                data = json.dumps(data)
+                data = data.encode()
+                request.urlopen(req, timeout=10, data=data)
+            except Exception as e:
+                logger.warning('Telegram notification error: ' + str(e))
 
         if primaryConfidence == int(config['Primary']['confidence']) and not primaryActive:
             data = {
@@ -184,6 +205,7 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
+            sendTelegramNotification('Primary network connection STABLE. Failover inactive.')
             primaryActive = True
         elif primaryConfidence == 0 and primaryActive:
             data = {
@@ -194,6 +216,7 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
+            sendTelegramNotification('Primary network connection FAILED. Failover active.')
             primaryActive = False
         logger.debug('primaryConfidence? ' + str(primaryConfidence))
         
