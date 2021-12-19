@@ -195,7 +195,7 @@ try:
                 data = json.dumps(data)
                 data = data.encode()
                 urlopen(req, timeout=10, data=data)
-                logger.info('Sent Telegram notification successfully')
+                logger.info('Sent Telegram notification successfully: ' + message)
             except Exception as e:
                 logger.warning('Telegram notification error: ' + str(e))
 
