@@ -208,7 +208,7 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
-            sendTelegramNotification('Primary network connection *STABLE*. Failover INACTIVE. Current IPv4 is `' + str(externalIPv4) + '`.')
+            sendTelegramNotification('Primary network connection *STABLE*. Failover INACTIVE.\nCurrent IPv4 is `' + str(externalIPv4) + '`.')
             primaryActive = True
         elif primaryConfidence == 0 and primaryActive:
             data = {
@@ -219,7 +219,7 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
-            sendTelegramNotification('Primary network connection *FAILED*. Failover ACTIVE. Current IPv4 is `' + str(externalIPv4) + '`.')
+            sendTelegramNotification('Primary network connection *FAILED*. Failover ACTIVE.\nCurrent IPv4 is `' + str(externalIPv4) + '`.')
             primaryActive = False
         logger.debug('primaryConfidence? ' + str(primaryConfidence))
         
