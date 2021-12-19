@@ -118,6 +118,7 @@ if secondarySubnetSet:
     secondarySubnet = ipaddress.ip_network(config['Secondary']['subnet'])
 bothSubnetSet = not (primarySubnetSet ^ secondarySubnetSet)
 oldExternalIPv4 = None
+externalIPv4 = None
 try:
     while True:
         # Get the external ip and validate primary cname allowance
@@ -206,7 +207,7 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
-            sendTelegramNotification('Primary network connection STABLE. Failover inactive.')
+            sendTelegramNotification('Primary network connection STABLE. Failover INACTIVE. Current IPv4 is ' + str(externalIPv4) + '.')
             primaryActive = True
         elif primaryConfidence == 0 and primaryActive:
             data = {
@@ -217,7 +218,7 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
-            sendTelegramNotification('Primary network connection FAILED. Failover active.')
+            sendTelegramNotification('Primary network connection FAILED. Failover ACTIVE. Current IPv4 is ' + str(externalIPv4) + '.')
             primaryActive = False
         logger.debug('primaryConfidence? ' + str(primaryConfidence))
         
