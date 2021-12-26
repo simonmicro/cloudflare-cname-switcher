@@ -120,17 +120,18 @@ bothSubnetSet = not (primarySubnetSet ^ secondarySubnetSet)
 oldExternalIPv4 = None
 externalIPv4 = None
 try:
-    def sendTelegramNotification(message):
+    def sendTelegramNotification(message, markdown):
         if config['Telegram']['token'] == 'no':
             return
         try:
             req = Request('https://api.telegram.org/bot' + config['Telegram']['token'] + '/sendMessage', method='POST')
             req.add_header('Content-Type', 'application/json')
-            data = {
-                'parse_mode': 'MarkdownV2',
-                'chat_id': config['Telegram']['target'],
-                'text': message.replace('.', '\\.')
-            }
+            data = { 'chat_id': config['Telegram']['target'] }
+            if markdown:
+                data['parse_mode'] = 'MarkdownV2'
+                data['text'] = message.replace('.', '\\.')
+            else:
+                data['text'] = message
             data = json.dumps(data)
             data = data.encode()
             urlopen(req, timeout=10, data=data)
@@ -169,7 +170,7 @@ try:
                     logger.info('Updated ' + config['DynDns']['dyndns_target'] + ' to ' + data['content'])
                 except Exception as e:
                     logger.exception('Cloudflare A-record update error.')
-                    sendTelegramNotification(f'Something went wrong at the Cloudflare A-record updater: {e}')
+                    sendTelegramNotification(f'Something went wrong at the Cloudflare A-record updater: {e}', False)
             oldExternalIPv4 = externalIPv4
             
             externalIsPrimary = primarySubnetSet and externalIPv4 in primarySubnet
@@ -184,7 +185,7 @@ try:
         except Exception as e:
             logger.exception('External IPv4 resolve error.')
             primaryConfidence = 0
-            sendTelegramNotification(f'Something went wrong at the external IPv4 resolver: {e}')
+            sendTelegramNotification(f'Something went wrong at the external IPv4 resolver: {e}', False)
 
         # And update the dns entry of Cloudflare...
         def updateDynamicCname(config, data):
@@ -201,7 +202,7 @@ try:
                 logger.info('Updated ' + config['General']['dynamic_cname'] + ' to ' + data['content'])
             except Exception as e:
                 logger.exception('Cloudflare CNAME-record update error.')
-                sendTelegramNotification(f'Something went wrong at the Cloudflare CNAME updater: {e}')
+                sendTelegramNotification(f'Something went wrong at the Cloudflare CNAME updater: {e}', False)
 
         if primaryConfidence == int(config['Primary']['confidence']) and not primaryActive:
             data = {
@@ -212,7 +213,7 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
-            sendTelegramNotification('Primary network connection *STABLE*. Failover INACTIVE.\nCurrent IPv4 is `' + str(externalIPv4) + '`.')
+            sendTelegramNotification('Primary network connection *STABLE*. Failover INACTIVE.\nCurrent IPv4 is `' + str(externalIPv4) + '`.', True)
             primaryActive = True
         elif primaryConfidence == 0 and primaryActive:
             data = {
@@ -223,7 +224,7 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
-            sendTelegramNotification('Primary network connection *FAILED*. Failover ACTIVE.\nCurrent IPv4 is `' + str(externalIPv4) + '`.')
+            sendTelegramNotification('Primary network connection *FAILED*. Failover ACTIVE.\nCurrent IPv4 is `' + str(externalIPv4) + '`.', True)
             primaryActive = False
         logger.debug('primaryConfidence? ' + str(primaryConfidence))
         
