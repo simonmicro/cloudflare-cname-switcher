@@ -9,4 +9,4 @@ WORKDIR /workdir
 COPY cname_switcher.py .
 
 # Command
-CMD python3 cname_switcher.py
+CMD python3 -u cname_switcher.py
