@@ -120,8 +120,13 @@ if secondarySubnetSet:
 bothSubnetSet = not (primarySubnetSet ^ secondarySubnetSet)
 oldExternalIPv4 = None
 externalIPv4 = None
+ignoreFirstNotification = True
 try:
     def sendTelegramNotification(message, markdown):
+        global ignoreFirstNotification
+        if ignoreFirstNotification:
+            ignoreFirstNotification = False
+            return
         if config['Telegram']['token'] == 'no':
             return
         try:
