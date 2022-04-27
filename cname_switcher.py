@@ -125,7 +125,7 @@ ignoreFirstNotification = True
 notificationBuffer = [] # In case sending a notification failes, it will be stored here...
 try:
     def sendTelegramNotification(message, markdown):
-        global ignoreFirstNotification, notificationBuffer
+        global ignoreFirstNotification, notificationBuffer, logger
         if ignoreFirstNotification:
             ignoreFirstNotification = False
             return
@@ -154,7 +154,10 @@ try:
                         msg += f'\n\n_This is a delayed message from `{timestamp.isoformat()}`._'
                     else:
                         msg += f'\n\nThis is a delayed message from {timestamp.isoformat()}.'
-                    sendTelegramNotification(msg, markdown) # This will re-queue the message on failure...
+                    try:
+                        sendTelegramNotification(msg, markdown) # This will re-queue the message on failure...
+                    except:
+                        pass # Well... No.
         except Exception as e:
             notificationBuffer.append((message, markdown, datetime.datetime.now(datetime.timezone.utc)))
             logger.exception('Telegram notification error.')
