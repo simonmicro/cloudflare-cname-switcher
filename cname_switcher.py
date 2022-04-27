@@ -197,7 +197,7 @@ try:
         def updateDynamicCname(config, data):
             try:
                 urlopen(Request(
-                    'https://api.Cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records/' + CloudflareDnsRecordId,
+                    'https://api.cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records/' + CloudflareDnsRecordId,
                     method='PUT',
                     data=bytes(json.dumps(data), encoding='utf8'),
                     headers={
