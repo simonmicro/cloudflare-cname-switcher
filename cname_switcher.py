@@ -191,10 +191,10 @@ try:
                         }
                     ))
                     logger.info('Updated ' + config['DynDns']['dyndns_target'] + ' to ' + data['content'])
+                    oldExternalIPv4 = externalIPv4
                 except Exception as e:
                     logger.exception('Cloudflare A-record update error.')
                     sendTelegramNotification(f'Something went wrong at the Cloudflare A-record updater: {e}', False)
-            oldExternalIPv4 = externalIPv4
             
             externalIsPrimary = primarySubnetSet and externalIPv4 in primarySubnet
             externalIsSecondary = secondarySubnetSet and externalIPv4 in secondarySubnet
