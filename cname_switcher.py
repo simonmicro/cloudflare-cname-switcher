@@ -5,6 +5,7 @@ import json
 import time
 import ipaddress
 import configparser
+import datetime
 import logging
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -121,9 +122,10 @@ bothSubnetSet = not (primarySubnetSet ^ secondarySubnetSet)
 oldExternalIPv4 = None
 externalIPv4 = None
 ignoreFirstNotification = True
+notificationBuffer = [] # In case sending a notification failes, it will be stored here...
 try:
     def sendTelegramNotification(message, markdown):
-        global ignoreFirstNotification
+        global ignoreFirstNotification, notificationBuffer
         if ignoreFirstNotification:
             ignoreFirstNotification = False
             return
@@ -142,7 +144,19 @@ try:
             data = data.encode()
             urlopen(req, timeout=10, data=data)
             logger.info('Sent Telegram notification successfully: ' + message)
+            if len(notificationBuffer):
+                retryThese = notificationBuffer
+                notificationBuffer = [] # Empty current buffer
+                logger.info(f'Processing {len(retryThese)} delayed massages...')
+                for params in retryThese:
+                    msg, markdown, timestamp = params
+                    if markdown:
+                        msg += f'\n\n_This is a delayed message from `{timestamp.isoformat()}`._'
+                    else:
+                        msg += f'\n\nThis is a delayed message from {timestamp.isoformat()}.'
+                    sendTelegramNotification(msg, markdown) # This will re-queue the message on failure...
         except Exception as e:
+            notificationBuffer.append((message, markdown, datetime.datetime.now(datetime.timezone.utc)))
             logger.exception('Telegram notification error.')
 
     while True:
