@@ -211,7 +211,7 @@ try:
             sendTelegramNotification(f'Something went wrong at the external IPv4 resolver: {e}', False)
 
         # And update the dns entry of Cloudflare...
-        def updateDynamicCname(config, data):
+        def updateDynamicCname(config, data) -> bool:
             try:
                 urlopen(Request(
                     'https://api.cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records/' + CloudflareDnsRecordId,
@@ -223,9 +223,11 @@ try:
                     }
                 ))
                 logger.info('Updated ' + config['General']['dynamic_cname'] + ' to ' + data['content'])
+                return True
             except Exception as e:
                 logger.exception('Cloudflare CNAME-record update error.')
                 sendTelegramNotification(f'Something went wrong at the Cloudflare CNAME updater: {e}', False)
+                return False
 
         loopTime = int(config['General']['update_interval'])
 
@@ -237,9 +239,9 @@ try:
                 'ttl': int(config['Primary']['ttl']),
                 'proxied': False
             }
-            updateDynamicCname(config, data)
-            sendTelegramNotification(f'Primary network connection *STABLE* since `{primaryConfidence}` checks. Failover INACTIVE. Current IPv4 is `{externalIPv4}`.', True)
-            primaryActive = True
+            if updateDynamicCname(config, data):
+                sendTelegramNotification(f'Primary network connection *STABLE* since `{primaryConfidence}` checks. Failover INACTIVE. Current IPv4 is `{externalIPv4}`.', True)
+                primaryActive = True
         elif primaryConfidence == 0 and primaryActive:
             data = {
                 'type': 'CNAME',
@@ -248,9 +250,9 @@ try:
                 'ttl': int(config['Secondary']['ttl']),
                 'proxied': False
             }
-            updateDynamicCname(config, data)
-            sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in `{loopTime}` seconds... Current IPv4 is `{externalIPv4}`.', True)
-            primaryActive = False
+            if updateDynamicCname(config, data):
+                sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in `{loopTime}` seconds... Current IPv4 is `{externalIPv4}`.', True)
+                primaryActive = False
         logger.debug('primaryConfidence? ' + str(primaryConfidence))
         
         # Wait until next check...
