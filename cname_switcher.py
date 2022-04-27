@@ -227,6 +227,8 @@ try:
                 logger.exception('Cloudflare CNAME-record update error.')
                 sendTelegramNotification(f'Something went wrong at the Cloudflare CNAME updater: {e}', False)
 
+        loopTime = int(config['General']['update_interval'])
+
         if primaryConfidence == int(config['Primary']['confidence']) and not primaryActive:
             data = {
                 'type': 'CNAME',
@@ -236,7 +238,7 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
-            sendTelegramNotification('Primary network connection *STABLE*. Failover INACTIVE.\nCurrent IPv4 is `' + str(externalIPv4) + '`.', True)
+            sendTelegramNotification(f'Primary network connection *STABLE* since {primaryConfidence} checks. Failover INACTIVE.\nCurrent IPv4 is `{externalIPv4}`.', True)
             primaryActive = True
         elif primaryConfidence == 0 and primaryActive:
             data = {
@@ -247,13 +249,13 @@ try:
                 'proxied': False
             }
             updateDynamicCname(config, data)
-            sendTelegramNotification('Primary network connection *FAILED*. Failover ACTIVE.\nCurrent IPv4 is `' + str(externalIPv4) + '`.', True)
+            sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in {loopTime} seconds...\nCurrent IPv4 is `{externalIPv4}`.', True)
             primaryActive = False
         logger.debug('primaryConfidence? ' + str(primaryConfidence))
         
         # Wait until next check...
         logger.debug('Sleeping...')
-        time.sleep(int(config['General']['update_interval']))
+        time.sleep(loopTime)
 except KeyboardInterrupt:
     pass
         
