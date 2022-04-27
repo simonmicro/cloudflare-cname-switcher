@@ -78,7 +78,7 @@ if config.getboolean('General', 'debug'):
 
 def resolveNameToRecordId(config, name):
     request = Request(
-        'https://api.Cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records?name=' + name,
+        'https://api.cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records?name=' + name,
         method='GET',
         headers={
             'Authorization': 'Bearer ' + config['Cloudflare']['token'],
@@ -182,7 +182,7 @@ try:
                         'proxied': False
                     }
                     urlopen(Request(
-                        'https://api.Cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records/' + CloudflareDynDnsRecordId,
+                        'https://api.cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records/' + CloudflareDynDnsRecordId,
                         method='PUT',
                         data=bytes(json.dumps(data), encoding='utf8'),
                         headers={
