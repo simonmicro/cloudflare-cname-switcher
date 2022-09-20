@@ -32,7 +32,9 @@ if os.path.exists(configPath) == False:
         '# We\'ll try to get the external ip from up to 3 servers, each with a time of x': None,
         'external_timeout': '10',
         '# You can here specify e.g. \'http://icanhazip.com/\' to enforce using only one specific resolver (in case the \'default\' are too unstable)...': None,
-        'external_resolver': 'default'
+        'external_resolver': 'default',
+        '# If you wanty you can add an healthchecks.io URI to get notified if the service crashes': None,
+        'healthchecks_uri': ''
     }
     config['Telegram'] = {
         '# Set the bot token here (set to \'no\' to disable)': None,
@@ -254,6 +256,13 @@ try:
                 sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in `{loopTime}` seconds... Current IPv4 is `{externalIPv4}`.', True)
                 primaryActive = False
         logger.debug('primaryConfidence? ' + str(primaryConfidence))
+
+        # Health check
+        if config['General']['healthchecks_uri']:
+            try:
+                urlopen(config['General']['healthchecks_uri'])
+            except:
+                pass
         
         # Wait until next check...
         logger.debug('Sleeping...')
