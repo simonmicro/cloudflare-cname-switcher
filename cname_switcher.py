@@ -87,14 +87,13 @@ def resolveNameToRecordId(config, name):
             'Content-Type': 'application/json'
             }
         )
-    CloudflareDnsRecordId = None
     try:
         for dns in json.load(urlopen(request))['result']:
             if dns['name'] == name:
                 logger.debug(name + ' is ' + dns['id'])
                 return dns['id']
-    except:
-        pass
+    except Exception as e:
+        logger.exception('Failed to resolve ' + name + ' to record id: ' + str(e))
     return None
 
 # Resolve the dynamic_cname to a dns entry id of Cloudflare
