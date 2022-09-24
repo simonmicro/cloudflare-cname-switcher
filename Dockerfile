@@ -1,7 +1,8 @@
-FROM alpine
+FROM debian:latest
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Setup/Libs
-RUN apk --no-cache add python3 py3-pip
+RUN apt update && apt install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*
 RUN pip3 install ipgetter2 ipaddress
 
 # Setup/Script
