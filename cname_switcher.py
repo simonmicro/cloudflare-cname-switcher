@@ -117,19 +117,23 @@ class HealthcheckEndpoint(BaseHTTPRequestHandler):
     lastLoop = None
 
     def do_GET(self):
+        self.protocol_version = 'HTTP/1.0'
         if not self.path.endswith('/healthz'):
             self.send_response(404)
             self.end_headers()
         else:
-            self.send_header('Content-type', 'text/html')
             okay = self.lastLoop is not None and datetime.datetime.now() - self.lastLoop < datetime.timedelta(seconds=loopTime * 2)
+            msg = ('OK' if okay else 'BAD').encode('utf8')
             self.send_response(200 if okay else 503)
+            self.send_header('Content-type', 'text/html')
+            self.send_header('Content-length', len(msg))
             self.end_headers()
-            self.wfile.write(('OK' if okay else 'BAD').encode('utf8'))
+            self.wfile.write(msg)
 
 healthcheckServer = HTTPServer(('0.0.0.0', 80), HealthcheckEndpoint)
 healthcheckThread = threading.Thread(target=healthcheckServer.serve_forever)
 healthcheckThread.daemon = True # Disconnect from main thread
+healthcheckThread.start()
 
 logger.info('Startup complete.')
 getter = IPGetter()
