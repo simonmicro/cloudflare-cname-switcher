@@ -1,3 +1,4 @@
+import threading
 from ipgetter2 import IPGetter
 from urllib.request import Request, urlopen
 import os
@@ -10,6 +11,8 @@ import logging
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.debug('Booting...')
+
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Config stuff
 config = configparser.ConfigParser(allow_no_value=True)
@@ -27,7 +30,7 @@ if os.path.exists(configPath) == False:
         'debug': 'false',
         '# This CNAME will by updated when the external ip leaves the primary subnet or enters the secondary subnet': None,
         'dynamic_cname': 'dyn.example.com',
-        '# Please note the Client API are rate-limited by Cloudflare account to 1200 requests every 5 minutes': None,
+        '# Update interval (warning: healthchecks expect < 1 minute). Please note the Client API are rate-limited by Cloudflare account to 1200 requests every 5 minutes': None,
         'update_interval': '30',
         '# We\'ll try to get the external ip from up to 3 servers, each with a time of x': None,
         'external_timeout': '10',
@@ -107,6 +110,26 @@ if config['DynDns']['dyndns_target'] != 'no':
     if CloudflareDnsRecordId is None:
         logger.critical('Could not resolve ' + config['DynDns']['dyndns_target'] + ' to a Cloudflare dns id!')
         exit(2)
+
+# Prepare the healthcheck endpoint
+loopTime = int(config['General']['update_interval'])
+class HealthcheckEndpoint(BaseHTTPRequestHandler):
+    lastLoop = None
+
+    def do_GET(self):
+        if not self.path.endswith('/healthz'):
+            self.send_response(404)
+            self.end_headers()
+        else:
+            self.send_header('Content-type', 'text/html')
+            okay = self.lastLoop is not None and datetime.datetime.now() - self.lastLoop < datetime.timedelta(seconds=loopTime * 2)
+            self.send_response(200 if okay else 503)
+            self.end_headers()
+            self.wfile.write(('OK' if okay else 'BAD').encode('utf8'))
+
+healthcheckServer = HTTPServer(('0.0.0.0', 80), HealthcheckEndpoint)
+healthcheckThread = threading.Thread(target=healthcheckServer.serve_forever)
+healthcheckThread.daemon = True # Disconnect from main thread
 
 logger.info('Startup complete.')
 getter = IPGetter()
@@ -230,8 +253,6 @@ try:
                 sendTelegramNotification(f'Something went wrong at the Cloudflare CNAME updater: {e}', False)
                 return False
 
-        loopTime = int(config['General']['update_interval'])
-
         if primaryConfidence == int(config['Primary']['confidence']) and not primaryActive:
             data = {
                 'type': 'CNAME',
@@ -265,8 +286,10 @@ try:
         
         # Wait until next check...
         logger.debug('Sleeping...')
+        HealthcheckEndpoint.lastLoop = datetime.datetime.now()
         time.sleep(loopTime)
 except KeyboardInterrupt:
     pass
         
 logger.info('Bye!')
+healthcheckServer.shutdown() # stop the healthcheck server
