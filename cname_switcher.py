@@ -130,6 +130,10 @@ class HealthcheckEndpoint(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(msg)
 
+    def log_message(self, format, *args):
+        # Do not print the healthcheck requests to the console!
+        return
+
 healthcheckServer = HTTPServer(('0.0.0.0', 80), HealthcheckEndpoint)
 healthcheckThread = threading.Thread(target=healthcheckServer.serve_forever)
 healthcheckThread.daemon = True # Disconnect from main thread
