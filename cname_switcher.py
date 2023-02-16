@@ -8,6 +8,7 @@ import yaml
 import datetime
 import argparse
 import logging
+import sys
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.debug('Booting...')
@@ -35,26 +36,24 @@ def resolveNameToRecordId(config, name):
             'Content-Type': 'application/json'
             }
         )
-    try:
-        for dns in json.load(urlopen(request))['result']:
-            if dns['name'] == name:
-                logger.debug(name + ' is ' + dns['id'])
-                return dns['id']
-    except Exception as e:
-        logger.exception('Failed to resolve ' + name + ' to record id: ' + str(e))
-    return None
+    for dns in json.load(urlopen(request))['result']:
+        if dns['name'] == name:
+            logger.debug(name + ' is ' + dns['id'])
+            return dns['id']
 
 # Resolve the dynamic_cname to a dns entry id of Cloudflare
-CloudflareDnsRecordId = resolveNameToRecordId(config, config['general']['dynamic_cname'])
-if CloudflareDnsRecordId is None:
+try:
+    CloudflareDnsRecordId = resolveNameToRecordId(config, config['general']['dynamic_cname'])
+except:
     logger.critical('Could not resolve ' + config['general']['dynamic_cname'] + ' to a Cloudflare dns id!')
-    exit(1)
+    sys.exit(1)
 CloudflareDynDnsRecordId = None
 if config['dyndns']['dyndns_target']:
-    CloudflareDynDnsRecordId = resolveNameToRecordId(config, config['dyndns']['dyndns_target'])
-    if CloudflareDnsRecordId is None:
+    try:
+        CloudflareDynDnsRecordId = resolveNameToRecordId(config, config['dyndns']['dyndns_target'])
+    except:
         logger.critical('Could not resolve ' + config['dyndns']['dyndns_target'] + ' to a Cloudflare dns id!')
-        exit(2)
+        sys.exit(2)
 
 # Prepare the healthcheck endpoint
 loopTime = config['general']['update_interval']
@@ -120,7 +119,7 @@ try:
             data = json.dumps(data)
             data = data.encode()
             urlopen(req, timeout=10, data=data)
-            logger.info('Sent Telegram notification successfully: ' + message)
+            logger.info('Sent Telegram notification successfully: ' + message.replace('\n', ' '))
             if len(notificationBuffer):
                 retryThese = notificationBuffer
                 notificationBuffer = [] # Empty current buffer
@@ -135,7 +134,7 @@ try:
                         sendTelegramNotification(msg, markdown) # This will re-queue the message on failure...
                     except:
                         pass # Well... No.
-        except Exception as e:
+        except:
             notificationBuffer.append((message, markdown, datetime.datetime.now(datetime.timezone.utc)))
             logger.exception('Telegram notification error.')
 
