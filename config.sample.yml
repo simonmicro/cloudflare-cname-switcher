@@ -29,7 +29,8 @@ primary:
   # - Only Primary.subnet: Switch to primary when external IP enters it long enough
   # - Only Secondary.subnet: Switch to secondary when external IP enters it
   # - Both subnets: Switch to primary when external IP enters it long enough and switch to secondary when external IP enters it. Otherwise do nothing.
-  subnet: 88.42.1.0/24
+  subnet:
+    - 88.42.1.0/24
   # TTL to be applied to dynamic_cname when this is active
   ttl: 60
   # Amount of successful checks needed, until we switch (back) to primary from secondary
@@ -37,7 +38,7 @@ primary:
 secondary:
   # E.g. the fallback over mobile network
   cname: wan2.example.com
-  # Commonly found by try-and-error (set to 'null' to disable)
-  subnet: null
+  # Commonly found by try-and-error (set to an ampty array to disable)
+  subnet: []
   # TTL to be applied to dynamic_cname when this is active (should be higher to prevent clients constantly switching when the network is bad)
   ttl: 300

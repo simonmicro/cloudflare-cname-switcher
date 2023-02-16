@@ -88,13 +88,9 @@ getter = IPGetter()
 getter.timeout = config['general']['external_timeout']
 primaryConfidence = int(config['primary']['confidence'] / 2)
 primaryActive = False
-primarySubnetSet = config['primary']['subnet'] is not None
-secondarySubnetSet = config['secondary']['subnet'] is not None
-if primarySubnetSet:
-    primarySubnet = ipaddress.ip_network(config['primary']['subnet'])
-if secondarySubnetSet:
-    secondarySubnet = ipaddress.ip_network(config['secondary']['subnet'])
-bothSubnetSet = not (primarySubnetSet ^ secondarySubnetSet)
+primarySubnets = [ipaddress.ip_network(n) for n in config['primary']['subnet']]
+secondarySubnets = [ipaddress.ip_network(n) for n in config['secondary']['subnet']]
+bothSubnetsSet = len(primarySubnets) > 0 and len(secondarySubnets) > 0
 oldExternalIPv4 = None
 externalIPv4 = None
 ignoreFirstNotification = True
@@ -172,14 +168,14 @@ try:
                     logger.exception('Cloudflare A-record update error.')
                     sendTelegramNotification(f'Something went wrong at the Cloudflare A-record updater: {e}', False)
             
-            externalIsPrimary = primarySubnetSet and externalIPv4 in primarySubnet
-            externalIsSecondary = secondarySubnetSet and externalIPv4 in secondarySubnet
-            if primarySubnetSet and externalIsPrimary or (secondarySubnetSet and not externalIsSecondary and not bothSubnetSet):
+            externalIsPrimary = True in [externalIPv4 in n for n in primarySubnets]
+            externalIsSecondary = True in [externalIPv4 in n for n in secondarySubnets]
+            if externalIsPrimary or (not bothSubnetsSet and not externalIsSecondary):
                 primaryConfidence += 1
-            elif secondarySubnetSet and externalIsSecondary or (primarySubnetSet and not externalIsPrimary and not bothSubnetSet):
+            elif externalIsSecondary or (not bothSubnetsSet and not externalIsPrimary):
                 primaryConfidence = 0
             else:
-                logger.warning('External IP (' + str(externalIPv4) + ') is in neither the primary (' + str(primarySubnet) + ') nor the secondary (' + str(secondarySubnet) + ') subnet -> ignoring...')
+                logger.warning('External IP (' + str(externalIPv4) + ') is in neither the primary (' + str(primarySubnets) + ') nor the secondary (' + str(secondarySubnets) + ') subnet -> ignoring...')
             logger.debug('External IP is ' + str(externalIPv4))
         except Exception as e:
             logger.exception('External IPv4 resolve error.')
