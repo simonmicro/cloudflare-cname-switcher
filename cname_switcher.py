@@ -11,7 +11,6 @@ import logging
 import sys
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.debug('Booting...')
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -20,12 +19,13 @@ parser.add_argument('--config', '-c', type=str, required=True, help='Path to the
 parser.add_argument('--debug', '-d', action='store_true', help='Something does not work? Debug mode!')
 args = parser.parse_args()
 
-# Config stuff
-with open(args.config, 'r') as configFile:
-    config = yaml.safe_load(configFile)
-
 if args.debug:
     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG, force=True)
+
+# Config stuff
+logger.debug('Loading config...')
+with open(args.config, 'r') as configFile:
+    config = yaml.safe_load(configFile)
 
 # Stuff, which should be set, when the user is not using the sample-config anymore...
 assert config['cloudflare']['zone_id'], 'cloudflare.zone_id should be given'
@@ -35,7 +35,18 @@ assert config['primary']['cname'], 'primary.cname should be given'
 assert config['secondary']['cname'], 'secondary.cname should be given'
 assert len(config['primary']['subnets']) > 0 or len(config['secondary']['subnets']) > 0, 'primary or secondary subnets should be given'
 
+# Load config-elements
+primaryConfidence = int(config['primary']['confidence'] / 2)
+primarySubnets = [ipaddress.ip_network(n) for n in config['primary']['subnets']]
+secondarySubnets = [ipaddress.ip_network(n) for n in config['secondary']['subnets']]
+bothSubnetsAreSet = len(primarySubnets) > 0 and len(secondarySubnets) > 0
+telegramToken = config['telegram']['token']
+telegramTarget = config['telegram']['target']
+if telegramToken is not None:
+    assert telegramTarget, 'telegram.target should be given'
+
 def resolveNameToRecordId(config, name):
+    logger.debug(f'Resolving {name} to a record-id...')
     request = Request(
         'https://api.cloudflare.com/client/v4/zones/' + config['cloudflare']['zone_id'] + '/dns_records?name=' + name,
         method='GET',
@@ -43,11 +54,12 @@ def resolveNameToRecordId(config, name):
             'Authorization': 'Bearer ' + config['cloudflare']['token'],
             'Content-Type': 'application/json'
             }
-        )
+    )
     for dns in json.load(urlopen(request))['result']:
         if dns['name'] == name:
-            logger.debug(name + ' is ' + dns['id'])
+            logger.debug(name + ' record-id is ' + dns['id'])
             return dns['id']
+    raise KeyError(name) # record with that name not found
 
 # Resolve the dynamic_cname to a dns entry id of Cloudflare
 try:
@@ -95,19 +107,10 @@ healthcheckThread.start()
 getter = IPGetter()
 getter.timeout = config['general']['external_timeout']
 
-primaryConfidence = int(config['primary']['confidence'] / 2)
-primaryActive = False
-primarySubnets = [ipaddress.ip_network(n) for n in config['primary']['subnets']]
-secondarySubnets = [ipaddress.ip_network(n) for n in config['secondary']['subnets']]
-bothSubnetsSet = len(primarySubnets) > 0 and len(secondarySubnets) > 0
-telegramToken = config['telegram']['token']
-telegramTarget = config['telegram']['target']
-if telegramToken is not None:
-    assert telegramTarget, 'telegram.target should be given'
-
 logger.info('Startup complete.')
 oldExternalIPv4 = None
 externalIPv4 = None
+primaryActive = False
 ignoreFirstNotification = True
 notificationBuffer = [] # In case sending a notification failes, it will be stored here...
 try:
@@ -185,9 +188,9 @@ try:
             
             externalIsPrimary = True in [externalIPv4 in n for n in primarySubnets]
             externalIsSecondary = True in [externalIPv4 in n for n in secondarySubnets]
-            if externalIsPrimary or (not bothSubnetsSet and not externalIsSecondary):
+            if externalIsPrimary or (not bothSubnetsAreSet and not externalIsSecondary):
                 primaryConfidence += 1
-            elif externalIsSecondary or (not bothSubnetsSet and not externalIsPrimary):
+            elif externalIsSecondary or (not bothSubnetsAreSet and not externalIsPrimary):
                 primaryConfidence = 0
             else:
                 logger.warning('External IP (' + str(externalIPv4) + ') is in neither the primary (' + str(primarySubnets) + ') nor the secondary (' + str(secondarySubnets) + ') subnet -> ignoring...')
