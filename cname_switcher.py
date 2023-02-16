@@ -28,10 +28,10 @@ if args.debug:
 
 def resolveNameToRecordId(config, name):
     request = Request(
-        'https://api.cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records?name=' + name,
+        'https://api.cloudflare.com/client/v4/zones/' + config['cloudflare']['zone_id'] + '/dns_records?name=' + name,
         method='GET',
         headers={
-            'Authorization': 'Bearer ' + config['Cloudflare']['token'],
+            'Authorization': 'Bearer ' + config['cloudflare']['token'],
             'Content-Type': 'application/json'
             }
         )
@@ -45,19 +45,19 @@ def resolveNameToRecordId(config, name):
     return None
 
 # Resolve the dynamic_cname to a dns entry id of Cloudflare
-CloudflareDnsRecordId = resolveNameToRecordId(config, config['General']['dynamic_cname'])
+CloudflareDnsRecordId = resolveNameToRecordId(config, config['general']['dynamic_cname'])
 if CloudflareDnsRecordId is None:
-    logger.critical('Could not resolve ' + config['General']['dynamic_cname'] + ' to a Cloudflare dns id!')
+    logger.critical('Could not resolve ' + config['general']['dynamic_cname'] + ' to a Cloudflare dns id!')
     exit(1)
 CloudflareDynDnsRecordId = None
-if config['DynDns']['dyndns_target']:
-    CloudflareDynDnsRecordId = resolveNameToRecordId(config, config['DynDns']['dyndns_target'])
+if config['dyndns']['dyndns_target']:
+    CloudflareDynDnsRecordId = resolveNameToRecordId(config, config['dyndns']['dyndns_target'])
     if CloudflareDnsRecordId is None:
-        logger.critical('Could not resolve ' + config['DynDns']['dyndns_target'] + ' to a Cloudflare dns id!')
+        logger.critical('Could not resolve ' + config['dyndns']['dyndns_target'] + ' to a Cloudflare dns id!')
         exit(2)
 
 # Prepare the healthcheck endpoint
-loopTime = config['General']['update_interval']
+loopTime = config['general']['update_interval']
 class HealthcheckEndpoint(BaseHTTPRequestHandler):
     lastLoop = None
 
@@ -86,15 +86,15 @@ healthcheckThread.start()
 
 logger.info('Startup complete.')
 getter = IPGetter()
-getter.timeout = config['General']['external_timeout']
-primaryConfidence = int(config['Primary']['confidence'] / 2)
+getter.timeout = config['general']['external_timeout']
+primaryConfidence = int(config['primary']['confidence'] / 2)
 primaryActive = False
-primarySubnetSet = config['Primary']['subnet'] != 'no'
-secondarySubnetSet = config['Secondary']['subnet'] != 'no'
+primarySubnetSet = config['primary']['subnet'] is not None
+secondarySubnetSet = config['secondary']['subnet'] is not None
 if primarySubnetSet:
-    primarySubnet = ipaddress.ip_network(config['Primary']['subnet'])
+    primarySubnet = ipaddress.ip_network(config['primary']['subnet'])
 if secondarySubnetSet:
-    secondarySubnet = ipaddress.ip_network(config['Secondary']['subnet'])
+    secondarySubnet = ipaddress.ip_network(config['secondary']['subnet'])
 bothSubnetSet = not (primarySubnetSet ^ secondarySubnetSet)
 oldExternalIPv4 = None
 externalIPv4 = None
@@ -106,12 +106,12 @@ try:
         if ignoreFirstNotification:
             ignoreFirstNotification = False
             return
-        if config['Telegram']['token'] is None:
+        if config['telegram']['token'] is None:
             return
         try:
-            req = Request('https://api.telegram.org/bot' + config['Telegram']['token'] + '/sendMessage', method='POST')
+            req = Request('https://api.telegram.org/bot' + config['telegram']['token'] + '/sendMessage', method='POST')
             req.add_header('Content-Type', 'application/json')
-            data = { 'chat_id': config['Telegram']['target'] }
+            data = { 'chat_id': config['telegram']['target'] }
             if markdown:
                 data['parse_mode'] = 'MarkdownV2'
                 data['text'] = message.replace('.', '\\.')
@@ -143,31 +143,31 @@ try:
         # Get the external ip and validate primary cname allowance
         try:
             logger.debug('Resolving external IPv4...')
-            if config['General']['external_resolver'] == 'default':
+            if config['general']['external_resolver'] == 'default':
                 externalIPv4 = ipaddress.ip_address(str(getter.get().v4))
             else:
-                externalIPv4 = ipaddress.ip_address(str(getter.get_from(config['General']['external_resolver']).v4))
+                externalIPv4 = ipaddress.ip_address(str(getter.get_from(config['general']['external_resolver']).v4))
             
             # Update the cname to the external ip...
             if CloudflareDynDnsRecordId is not None and oldExternalIPv4 != externalIPv4:
                 try:
                     data = {
                         'type': 'A',
-                        'name': config['DynDns']['dyndns_target'],
+                        'name': config['dyndns']['dyndns_target'],
                         'content': str(externalIPv4),
-                        'ttl': config['DynDns']['dyndns_ttl'],
+                        'ttl': config['dyndns']['dyndns_ttl'],
                         'proxied': False
                     }
                     urlopen(Request(
-                        'https://api.cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records/' + CloudflareDynDnsRecordId,
+                        'https://api.cloudflare.com/client/v4/zones/' + config['cloudflare']['zone_id'] + '/dns_records/' + CloudflareDynDnsRecordId,
                         method='PUT',
                         data=bytes(json.dumps(data), encoding='utf8'),
                         headers={
-                            'Authorization': 'Bearer ' + config['Cloudflare']['token'],
+                            'Authorization': 'Bearer ' + config['cloudflare']['token'],
                             'Content-Type': 'application/json'
                         }
                     ))
-                    logger.info('Updated ' + config['DynDns']['dyndns_target'] + ' to ' + data['content'])
+                    logger.info('Updated ' + config['dyndns']['dyndns_target'] + ' to ' + data['content'])
                     oldExternalIPv4 = externalIPv4 # Will be retried if not successful
                 except Exception as e:
                     logger.exception('Cloudflare A-record update error.')
@@ -191,27 +191,27 @@ try:
         def updateDynamicCname(config, data) -> bool:
             try:
                 urlopen(Request(
-                    'https://api.cloudflare.com/client/v4/zones/' + config['Cloudflare']['zone_id'] + '/dns_records/' + CloudflareDnsRecordId,
+                    'https://api.cloudflare.com/client/v4/zones/' + config['cloudflare']['zone_id'] + '/dns_records/' + CloudflareDnsRecordId,
                     method='PUT',
                     data=bytes(json.dumps(data), encoding='utf8'),
                     headers={
-                        'Authorization': 'Bearer ' + config['Cloudflare']['token'],
+                        'Authorization': 'Bearer ' + config['cloudflare']['token'],
                         'Content-Type': 'application/json'
                     }
                 ))
-                logger.info('Updated ' + config['General']['dynamic_cname'] + ' to ' + data['content'])
+                logger.info('Updated ' + config['general']['dynamic_cname'] + ' to ' + data['content'])
                 return True
             except Exception as e:
                 logger.exception('Cloudflare CNAME-record update error.')
                 sendTelegramNotification(f'Something went wrong at the Cloudflare CNAME updater: {e}', False)
                 return False
 
-        if primaryConfidence == config['Primary']['confidence'] and not primaryActive:
+        if primaryConfidence == config['primary']['confidence'] and not primaryActive:
             data = {
                 'type': 'CNAME',
-                'name': config['General']['dynamic_cname'],
-                'content': config['Primary']['cname'],
-                'ttl': config['Primary']['ttl'],
+                'name': config['general']['dynamic_cname'],
+                'content': config['primary']['cname'],
+                'ttl': config['primary']['ttl'],
                 'proxied': False
             }
             if updateDynamicCname(config, data):
@@ -220,9 +220,9 @@ try:
         elif primaryConfidence == 0 and primaryActive:
             data = {
                 'type': 'CNAME',
-                'name': config['General']['dynamic_cname'],
-                'content': config['Secondary']['cname'],
-                'ttl': config['Secondary']['ttl'],
+                'name': config['general']['dynamic_cname'],
+                'content': config['secondary']['cname'],
+                'ttl': config['secondary']['ttl'],
                 'proxied': False
             }
             if updateDynamicCname(config, data):

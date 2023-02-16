@@ -1,9 +1,9 @@
-Cloudflare:
+cloudflare:
   # Open the overview of the domain and look bottom-right to get that ID
   zone_id: ''
   # Cloudflare account -> API-Token -> Create a new one with the Zone.DNS permission
   token: ''
-General:
+general:
   # This CNAME will by updated when the external ip leaves the primary subnet or enters the secondary subnet
   dynamic_cname: dyn.example.com
   # Update interval (warning: healthchecks expect < 1 minute). Please note the Client API are rate-limited by Cloudflare account to 1200 requests every 5 minutes
@@ -12,32 +12,32 @@ General:
   external_timeout: 10
   # You can here specify e.g. 'http://icanhazip.com/' to enforce using only one specific resolver (in case the 'default' are too unstable)...
   external_resolver: default
-Telegram:
+telegram:
   # Set the bot token here (set to 'null' to disable)
   token: null
   # Set the chat id here
   target: 10239482309
-DynDns:
+dyndns:
   # A record to store the current IPv4 to (set to 'null' to disable)
   dyndns_target: null
   # TTL to be applied to dyndns_target
   dyndns_ttl: 60
-Primary:
+primary:
   # E.g. primary cable line
-  CNAME: wan1.example.com
+  cname: wan1.example.com
   # Subnets are commonly found by try-and-error - the following modes are supported:
-  # - Only Primary.Subnet: Switch to primary when external IP enters it long enough
-  # - Only Secondary.Subnet: Switch to secondary when external IP enters it
-  # - Both subnets: Switch to primary when external IP enters it long enough and switch to secondary when external IP enters it. Otherwise do nothing
-  Subnet: 88.42.1.0/24
+  # - Only Primary.subnet: Switch to primary when external IP enters it long enough
+  # - Only Secondary.subnet: Switch to secondary when external IP enters it
+  # - Both subnets: Switch to primary when external IP enters it long enough and switch to secondary when external IP enters it. Otherwise do nothing.
+  subnet: 88.42.1.0/24
   # TTL to be applied to dynamic_cname when this is active
-  TTL: 60
+  ttl: 60
   # Amount of successful checks needed, until we switch (back) to primary from secondary
   Confidence: 4
-Secondary:
+secondary:
   # E.g. the fallback over mobile network
-  CNAME: wan2.example.com
-  # Commonly found by try-and-error (set to 'no' to disable)
-  Subnet: no
+  cname: wan2.example.com
+  # Commonly found by try-and-error (set to 'null' to disable)
+  subnet: null
   # TTL to be applied to dynamic_cname when this is active (should be higher to prevent clients constantly switching when the network is bad)
-  TTL: 300
+  ttl: 300
