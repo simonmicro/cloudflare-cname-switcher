@@ -17,6 +17,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', '-c', type=str, required=True, help='Path to the configuration file')
 parser.add_argument('--debug', '-d', action='store_true', help='Something does not work? Debug mode!')
+parser.add_argument('--port', '-p', type=int, default=80, help='Port for the internal healthcheck-endpoint')
 args = parser.parse_args()
 
 if args.debug:
@@ -98,7 +99,7 @@ class HealthcheckEndpoint(BaseHTTPRequestHandler):
         # Do not print the healthcheck requests to the console!
         return
 
-healthcheckServer = HTTPServer(('0.0.0.0', 80), HealthcheckEndpoint)
+healthcheckServer = HTTPServer(('0.0.0.0', args.port), HealthcheckEndpoint)
 healthcheckThread = threading.Thread(target=healthcheckServer.serve_forever)
 healthcheckThread.daemon = True # Disconnect from main thread
 healthcheckThread.start()
