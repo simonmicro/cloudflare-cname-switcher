@@ -50,7 +50,7 @@ if CloudflareDnsRecordId is None:
     logger.critical('Could not resolve ' + config['General']['dynamic_cname'] + ' to a Cloudflare dns id!')
     exit(1)
 CloudflareDynDnsRecordId = None
-if config['DynDns']['dyndns_target'] != 'no':
+if config['DynDns']['dyndns_target']:
     CloudflareDynDnsRecordId = resolveNameToRecordId(config, config['DynDns']['dyndns_target'])
     if CloudflareDnsRecordId is None:
         logger.critical('Could not resolve ' + config['DynDns']['dyndns_target'] + ' to a Cloudflare dns id!')
@@ -168,7 +168,7 @@ try:
                         }
                     ))
                     logger.info('Updated ' + config['DynDns']['dyndns_target'] + ' to ' + data['content'])
-                    oldExternalIPv4 = externalIPv4
+                    oldExternalIPv4 = externalIPv4 # Will be retried if not successful
                 except Exception as e:
                     logger.exception('Cloudflare A-record update error.')
                     sendTelegramNotification(f'Something went wrong at the Cloudflare A-record updater: {e}', False)

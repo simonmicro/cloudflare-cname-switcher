@@ -18,8 +18,8 @@ Telegram:
   # Set the chat id here
   target: 10239482309
 DynDns:
-  # A record to store the current IPv4 to (set to 'no' to disable)
-  dyndns_target: no
+  # A record to store the current IPv4 to (set to 'null' to disable)
+  dyndns_target: null
   # TTL to be applied to dyndns_target
   dyndns_ttl: 60
 Primary:
