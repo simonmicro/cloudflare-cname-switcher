@@ -1,7 +1,6 @@
 import threading
 from ipgetter2 import IPGetter
 from urllib.request import Request, urlopen
-import os
 import json
 import time
 import ipaddress
@@ -230,13 +229,6 @@ try:
                 sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in `{loopTime}` seconds... Current IPv4 is `{externalIPv4}`.', True)
                 primaryActive = False
         logger.debug('primaryConfidence? ' + str(primaryConfidence))
-
-        # Health check
-        if config['General']['healthchecks_uri']:
-            try:
-                urlopen(config['General']['healthchecks_uri'])
-            except:
-                pass
         
         # Wait until next check...
         logger.debug('Sleeping...')

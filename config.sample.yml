@@ -12,8 +12,6 @@ General:
   external_timeout: 10
   # You can here specify e.g. 'http://icanhazip.com/' to enforce using only one specific resolver (in case the 'default' are too unstable)...
   external_resolver: default
-  # If you want, you can add an healthchecks.io URI to get notified if the service crashes
-  healthchecks_uri: ''
 Telegram:
   # Set the bot token here (set to 'no' to disable)
   token: no
