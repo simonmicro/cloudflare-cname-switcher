@@ -1,0 +1,45 @@
+Cloudflare:
+  # Open the overview of the domain and look bottom-right to get that ID
+  zone_id: ''
+  # Cloudflare account -> API-Token -> Create a new one with the Zone.DNS permission
+  token: ''
+General:
+  # This CNAME will by updated when the external ip leaves the primary subnet or enters the secondary subnet
+  dynamic_cname: dyn.example.com
+  # Update interval (warning: healthchecks expect < 1 minute). Please note the Client API are rate-limited by Cloudflare account to 1200 requests every 5 minutes
+  update_interval: 30
+  # We'll try to get the external ip from up to 3 servers, each with a time of x
+  external_timeout: 10
+  # You can here specify e.g. 'http://icanhazip.com/' to enforce using only one specific resolver (in case the 'default' are too unstable)...
+  external_resolver: default
+  # If you want, you can add an healthchecks.io URI to get notified if the service crashes
+  healthchecks_uri: ''
+Telegram:
+  # Set the bot token here (set to 'no' to disable)
+  token: no
+  # Set the chat id here
+  target: 10239482309
+DynDns:
+  # A record to store the current IPv4 to (set to 'no' to disable)
+  dyndns_target: no
+  # TTL to be applied to dyndns_target
+  dyndns_ttl: 60
+Primary:
+  # E.g. primary cable line
+  CNAME: wan1.example.com
+  # Subnets are commonly found by try-and-error - the following modes are supported:
+  # - Only Primary.Subnet: Switch to primary when external IP enters it long enough
+  # - Only Secondary.Subnet: Switch to secondary when external IP enters it
+  # - Both subnets: Switch to primary when external IP enters it long enough and switch to secondary when external IP enters it. Otherwise do nothing
+  Subnet: 88.42.1.0/24
+  # TTL to be applied to dynamic_cname when this is active
+  TTL: 60
+  # Amount of successful checks needed, until we switch (back) to primary from secondary
+  Confidence: 4
+Secondary:
+  # E.g. the fallback over mobile network
+  CNAME: wan2.example.com
+  # Commonly found by try-and-error (set to 'no' to disable)
+  Subnet: no
+  # TTL to be applied to dynamic_cname when this is active (should be higher to prevent clients constantly switching when the network is bad)
+  TTL: 300

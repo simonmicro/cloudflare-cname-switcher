@@ -5,8 +5,9 @@ import os
 import json
 import time
 import ipaddress
-import configparser
+import yaml
 import datetime
+import argparse
 import logging
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,71 +15,16 @@ logger.debug('Booting...')
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# Config stuff
-config = configparser.ConfigParser(allow_no_value=True)
-os.makedirs('config', exist_ok=True)
-configPath = os.path.join('config', 'config.ini')
-if os.path.exists(configPath) == False:
-    config['Cloudflare'] = {
-        '# Open the overview of the domain and look bottom-right...': None,
-        'zone_id': '',
-        '# Cloudflare account -> API-Token -> Create a new one with the Zone.DNS permission': None,
-        'token': ''
-    }
-    config['General'] = {
-        '# Enable this when something does not work...': None,
-        'debug': 'false',
-        '# This CNAME will by updated when the external ip leaves the primary subnet or enters the secondary subnet': None,
-        'dynamic_cname': 'dyn.example.com',
-        '# Update interval (warning: healthchecks expect < 1 minute). Please note the Client API are rate-limited by Cloudflare account to 1200 requests every 5 minutes': None,
-        'update_interval': '30',
-        '# We\'ll try to get the external ip from up to 3 servers, each with a time of x': None,
-        'external_timeout': '10',
-        '# You can here specify e.g. \'http://icanhazip.com/\' to enforce using only one specific resolver (in case the \'default\' are too unstable)...': None,
-        'external_resolver': 'default',
-        '# If you wanty you can add an healthchecks.io URI to get notified if the service crashes': None,
-        'healthchecks_uri': ''
-    }
-    config['Telegram'] = {
-        '# Set the bot token here (set to \'no\' to disable)': None,
-        'token': 'no',
-        '# Set the chat id here': None,
-        'target': '10239482309'
-    }
-    config['DynDns'] = {
-        '# A record to store the current IPv4 to (set to \'no\' to disable)': None,
-        'dyndns_target': 'no',
-        '# TTL to be applied to dyndns_target': None,
-        'dyndns_ttl': '60'
-    }
-    config['Primary'] = {
-        '# E.g. primary cable line': None,
-        'CNAME': 'wan1.example.com',
-        '# Commonly found by try-and-error - the following modes are supported:': None,
-        '# - Only Primary.Subnet: Switch to primary when external IP enters it long enough.': None,
-        '# - Only Secondary.Subnet: Switch to secondary when external IP enters it.': None,
-        '# - Both subnets: Switch to primary when external IP enters it long enough and switch to secondary when external IP enters it. Otherwise do nothing.': None,
-        'Subnet': '88.42.1.0/24',
-        '# TTL to be applied to dynamic_cname when this is active': None,
-        'TTL': '60',
-        '# Amount of successful checks needed, until we switch back to primary from secondary': None,
-        'Confidence': '4'
-    }
-    config['Secondary'] = {
-        '# E.g. the fallback over mobile network': None,
-        'CNAME': 'wan2.example.com',
-        '# Commonly found by try-and-error (set to \'no\' to disable)': None,
-        'Subnet': 'no',
-        '# TTL to be applied to dynamic_cname when this is active (higher to prevent clients constantly switching when the network is bad)': None,
-        'TTL': '300'
-    }
-    with open(configPath, 'w') as configfile:
-        config.write(configfile)
-        logger.info('Missing ' + configPath + ' -> written default one.')
-        exit(0)
-config.read(configPath)
+parser = argparse.ArgumentParser()
+parser.add_argument('--config', '-c', type=str, required=True, help='Path to the configuration file')
+parser.add_argument('--debug', '-d', action='store_true', help='Something does not work? Debug mode!')
+args = parser.parse_args()
 
-if config.getboolean('General', 'debug'):
+# Config stuff
+with open(args.config, 'r') as configFile:
+    config = yaml.safe_load(configFile)
+
+if args.debug:
     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG, force=True)
 
 def resolveNameToRecordId(config, name):
@@ -112,7 +58,7 @@ if config['DynDns']['dyndns_target'] != 'no':
         exit(2)
 
 # Prepare the healthcheck endpoint
-loopTime = int(config['General']['update_interval'])
+loopTime = config['General']['update_interval']
 class HealthcheckEndpoint(BaseHTTPRequestHandler):
     lastLoop = None
 
@@ -141,8 +87,8 @@ healthcheckThread.start()
 
 logger.info('Startup complete.')
 getter = IPGetter()
-getter.timeout = int(config['General']['external_timeout'])
-primaryConfidence = int(int(config['Primary']['confidence']) / 2)
+getter.timeout = config['General']['external_timeout']
+primaryConfidence = int(config['Primary']['confidence'] / 2)
 primaryActive = False
 primarySubnetSet = config['Primary']['subnet'] != 'no'
 secondarySubnetSet = config['Secondary']['subnet'] != 'no'
@@ -261,12 +207,12 @@ try:
                 sendTelegramNotification(f'Something went wrong at the Cloudflare CNAME updater: {e}', False)
                 return False
 
-        if primaryConfidence == int(config['Primary']['confidence']) and not primaryActive:
+        if primaryConfidence == config['Primary']['confidence'] and not primaryActive:
             data = {
                 'type': 'CNAME',
                 'name': config['General']['dynamic_cname'],
                 'content': config['Primary']['cname'],
-                'ttl': int(config['Primary']['ttl']),
+                'ttl': config['Primary']['ttl'],
                 'proxied': False
             }
             if updateDynamicCname(config, data):
@@ -277,7 +223,7 @@ try:
                 'type': 'CNAME',
                 'name': config['General']['dynamic_cname'],
                 'content': config['Secondary']['cname'],
-                'ttl': int(config['Secondary']['ttl']),
+                'ttl': config['Secondary']['ttl'],
                 'proxied': False
             }
             if updateDynamicCname(config, data):
