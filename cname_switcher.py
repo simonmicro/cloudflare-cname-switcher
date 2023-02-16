@@ -45,14 +45,14 @@ def resolveNameToRecordId(config, name):
 try:
     CloudflareDnsRecordId = resolveNameToRecordId(config, config['general']['dynamic_cname'])
 except:
-    logger.critical('Could not resolve ' + config['general']['dynamic_cname'] + ' to a Cloudflare dns id!')
+    logger.exception('Could not resolve ' + config['general']['dynamic_cname'] + ' to a Cloudflare dns id!')
     sys.exit(1)
 CloudflareDynDnsRecordId = None
 if config['dyndns']['dyndns_target']:
     try:
         CloudflareDynDnsRecordId = resolveNameToRecordId(config, config['dyndns']['dyndns_target'])
     except:
-        logger.critical('Could not resolve ' + config['dyndns']['dyndns_target'] + ' to a Cloudflare dns id!')
+        logger.exception('Could not resolve ' + config['dyndns']['dyndns_target'] + ' to a Cloudflare dns id!')
         sys.exit(2)
 
 # Prepare the healthcheck endpoint
