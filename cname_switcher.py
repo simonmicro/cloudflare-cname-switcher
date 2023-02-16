@@ -106,7 +106,7 @@ try:
         if ignoreFirstNotification:
             ignoreFirstNotification = False
             return
-        if config['Telegram']['token'] == 'no':
+        if config['Telegram']['token'] is None:
             return
         try:
             req = Request('https://api.telegram.org/bot' + config['Telegram']['token'] + '/sendMessage', method='POST')

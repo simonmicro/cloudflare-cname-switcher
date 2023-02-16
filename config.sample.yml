@@ -13,8 +13,8 @@ General:
   # You can here specify e.g. 'http://icanhazip.com/' to enforce using only one specific resolver (in case the 'default' are too unstable)...
   external_resolver: default
 Telegram:
-  # Set the bot token here (set to 'no' to disable)
-  token: no
+  # Set the bot token here (set to 'null' to disable)
+  token: null
   # Set the chat id here
   target: 10239482309
 DynDns:
