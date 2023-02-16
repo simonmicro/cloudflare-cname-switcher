@@ -27,6 +27,14 @@ with open(args.config, 'r') as configFile:
 if args.debug:
     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG, force=True)
 
+# Stuff, which should be set, when the user is not using the sample-config anymore...
+assert config['cloudflare']['zone_id'], 'cloudflare.zone_id should be given'
+assert config['cloudflare']['token'], 'cloudflare.token should be given'
+assert config['general']['dynamic_cname'], 'general.dynamic_cname should be given'
+assert config['primary']['cname'], 'primary.cname should be given'
+assert config['secondary']['cname'], 'secondary.cname should be given'
+assert len(config['primary']['subnets']) > 0 or len(config['secondary']['subnets']) > 0, 'primary or secondary subnets should be given'
+
 def resolveNameToRecordId(config, name):
     request = Request(
         'https://api.cloudflare.com/client/v4/zones/' + config['cloudflare']['zone_id'] + '/dns_records?name=' + name,
@@ -83,14 +91,21 @@ healthcheckThread = threading.Thread(target=healthcheckServer.serve_forever)
 healthcheckThread.daemon = True # Disconnect from main thread
 healthcheckThread.start()
 
-logger.info('Startup complete.')
+# Configure the ipgetter
 getter = IPGetter()
 getter.timeout = config['general']['external_timeout']
+
 primaryConfidence = int(config['primary']['confidence'] / 2)
 primaryActive = False
-primarySubnets = [ipaddress.ip_network(n) for n in config['primary']['subnet']]
-secondarySubnets = [ipaddress.ip_network(n) for n in config['secondary']['subnet']]
+primarySubnets = [ipaddress.ip_network(n) for n in config['primary']['subnets']]
+secondarySubnets = [ipaddress.ip_network(n) for n in config['secondary']['subnets']]
 bothSubnetsSet = len(primarySubnets) > 0 and len(secondarySubnets) > 0
+telegramToken = config['telegram']['token']
+telegramTarget = config['telegram']['target']
+if telegramToken is not None:
+    assert telegramTarget, 'telegram.target should be given'
+
+logger.info('Startup complete.')
 oldExternalIPv4 = None
 externalIPv4 = None
 ignoreFirstNotification = True
@@ -101,12 +116,12 @@ try:
         if ignoreFirstNotification:
             ignoreFirstNotification = False
             return
-        if config['telegram']['token'] is None:
+        if telegramToken is None:
             return
         try:
-            req = Request('https://api.telegram.org/bot' + config['telegram']['token'] + '/sendMessage', method='POST')
+            req = Request('https://api.telegram.org/bot' + telegramToken + '/sendMessage', method='POST')
             req.add_header('Content-Type', 'application/json')
-            data = { 'chat_id': config['telegram']['target'] }
+            data = { 'chat_id': telegramTarget }
             if markdown:
                 data['parse_mode'] = 'MarkdownV2'
                 data['text'] = message.replace('.', '\\.')
