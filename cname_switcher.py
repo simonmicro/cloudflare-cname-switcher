@@ -1,6 +1,4 @@
 import threading
-from ipgetter2 import IPGetter
-from urllib.request import Request, urlopen
 import json
 import time
 import ipaddress
@@ -9,15 +7,20 @@ import datetime
 import argparse
 import logging
 import sys
+import uuid
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+from ipgetter2 import IPGetter
+from urllib.request import Request, urlopen
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from prometheus_client import Gauge, Info, generate_latest, CollectorRegistry
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', '-c', type=str, default='config.yml', help='Path to the configuration file')
 parser.add_argument('--debug', '-d', action='store_true', help='Something does not work? Debug mode!')
-parser.add_argument('--port', '-p', type=int, default=80, help='Port for the internal healthcheck-endpoint')
+parser.add_argument('--port', '-p', type=int, default=80, help='Port for the internal healthcheck/metrics-endpoint')
+parser.add_argument('--metrics_prefix', type=str, default='ccs', help='Prefix for all metrics provided by this exporter')
 args = parser.parse_args()
 
 if args.debug:
@@ -79,30 +82,45 @@ if config['dyndns']['dyndns_target']:
         logger.exception('Could not resolve ' + config['dyndns']['dyndns_target'] + ' to a Cloudflare dns id!')
         sys.exit(2)
 
-# Prepare the healthcheck endpoint
+# Prepare the healthcheck/metric endpoint
 loopTime = config['general']['update_interval']
-class HealthcheckEndpoint(BaseHTTPRequestHandler):
+metricRegistry = CollectorRegistry()
+metricInfo = Info(args.metrics_prefix + '_info', 'Information about this exporter', registry=metricRegistry)
+metricInfo.info({'instance': uuid.uuid4().hex})
+metricHealthy = Gauge(args.metrics_prefix + '_healthy', 'Everything OK?', registry=metricRegistry)
+metricExternalIPDuration = Gauge(args.metrics_prefix + '_external_ip_seconds', 'How long did it take to get the external IP?', registry=metricRegistry)
+if config['dyndns']['dyndns_target']:
+    metricDynDnsDuration = Gauge(args.metrics_prefix + '_dyndns_seconds', 'How long did it take to update the dyndns record?', registry=metricRegistry)
+metricIsOnPrimary = Gauge(args.metrics_prefix + '_primary_active', 'Is the CNAME set to the primary record?', registry=metricRegistry)
+metricIsOnSecondary = Gauge(args.metrics_prefix + '_secondary_active', 'Is the CNAME set to the secondary record?', registry=metricRegistry)
+class HealthcheckMetricEndpoint(BaseHTTPRequestHandler):
     lastLoop = None
 
     def do_GET(self):
         self.protocol_version = 'HTTP/1.0'
-        if not self.path.endswith('/healthz'):
-            self.send_response(404)
-            self.end_headers()
-        else:
-            okay = self.lastLoop is not None and datetime.datetime.now() - self.lastLoop < datetime.timedelta(seconds=loopTime * 2)
+        okay = self.lastLoop is not None and datetime.datetime.now() - self.lastLoop < datetime.timedelta(seconds=loopTime * 2)
+        metricHealthy.set(1 if okay else 0)
+        if self.path.endswith('/healthz'):
             msg = ('OK' if okay else 'BAD').encode('utf8')
             self.send_response(200 if okay else 503)
-            self.send_header('Content-type', 'text/html')
+            self.send_header('Content-type', 'text/plain')
             self.send_header('Content-length', len(msg))
             self.end_headers()
             self.wfile.write(msg)
+        elif self.path.endswith('/metrics'):
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(generate_latest(metricRegistry))
+        else:
+            self.send_response(404)
+            self.end_headers()
 
     def log_message(self, format, *args):
         # Do not print the healthcheck requests to the console!
         return
 
-healthcheckServer = HTTPServer(('0.0.0.0', args.port), HealthcheckEndpoint)
+healthcheckServer = HTTPServer(('0.0.0.0', args.port), HealthcheckMetricEndpoint)
 healthcheckThread = threading.Thread(target=healthcheckServer.serve_forever)
 healthcheckThread.daemon = True # Disconnect from main thread
 healthcheckThread.start()
@@ -117,13 +135,16 @@ externalIPv4 = None
 primaryActive = False
 ignoreFirstNotification = True
 notificationBuffer = [] # In case sending a notification failes, it will be stored here...
+if telegramToken is not None:
+    metricQueuedTelegramNotifications = Gauge(args.metrics_prefix + '_queued_telegram_notifications', 'How many Telegram notifications are queued?', registry=metricRegistry)
+    metricQueuedTelegramNotifications.set_function(lambda: len(notificationBuffer))
 try:
     def sendTelegramNotification(message, markdown):
         global ignoreFirstNotification, notificationBuffer, logger
+        if telegramToken is None:
+            return
         if ignoreFirstNotification:
             ignoreFirstNotification = False
-            return
-        if telegramToken is None:
             return
         try:
             req = Request('https://api.telegram.org/bot' + telegramToken + '/sendMessage', method='POST')
@@ -160,10 +181,11 @@ try:
         # Get the external ip and validate primary cname allowance
         try:
             logger.debug('Resolving external IPv4...')
-            if config['general']['external_resolver'] == 'default':
-                externalIPv4 = ipaddress.ip_address(str(getter.get().v4))
-            else:
-                externalIPv4 = ipaddress.ip_address(str(getter.get_from(config['general']['external_resolver']).v4))
+            with metricExternalIPDuration.time():
+                if config['general']['external_resolver'] == 'default':
+                    externalIPv4 = ipaddress.ip_address(str(getter.get().v4))
+                else:
+                    externalIPv4 = ipaddress.ip_address(str(getter.get_from(config['general']['external_resolver']).v4))
             
             if externalIPv4 == ipaddress.IPv4Address('0.0.0.0'):
                 raise ValueError('External IPv4 is empty (0.0.0.0). Something seems wrong...')
@@ -178,7 +200,7 @@ try:
                         'ttl': config['dyndns']['dyndns_ttl'],
                         'proxied': False
                     }
-                    urlopen(Request(
+                    request = Request(
                         'https://api.cloudflare.com/client/v4/zones/' + config['cloudflare']['zone_id'] + '/dns_records/' + CloudflareDynDnsRecordId,
                         method='PUT',
                         data=bytes(json.dumps(data), encoding='utf8'),
@@ -186,7 +208,9 @@ try:
                             'Authorization': 'Bearer ' + config['cloudflare']['token'],
                             'Content-Type': 'application/json'
                         }
-                    ))
+                    )
+                    with metricDynDnsDuration.time():
+                        urlopen(request)
                     logger.info('Updated ' + config['dyndns']['dyndns_target'] + ' to ' + data['content'])
                     oldExternalIPv4 = externalIPv4 # Will be retried if not successful
                 except Exception as e:
@@ -237,6 +261,12 @@ try:
             if updateDynamicCname(config, data):
                 sendTelegramNotification(f'Primary network connection *STABLE* since `{primaryConfidence}` checks. Failover INACTIVE. Current IPv4 is `{externalIPv4}`.', True)
                 primaryActive = True
+                metricIsOnPrimary.set(1)
+                metricIsOnSecondary.set(0)
+            else:
+                # CNAME update failed -> undefined state
+                metricIsOnPrimary.set(0)
+                metricIsOnSecondary.set(0)
         elif primaryConfidence == 0 and primaryActive:
             data = {
                 'type': 'CNAME',
@@ -248,11 +278,17 @@ try:
             if updateDynamicCname(config, data):
                 sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in `{loopTime}` seconds... Current IPv4 is `{externalIPv4}`.', True)
                 primaryActive = False
+                metricIsOnPrimary.set(0)
+                metricIsOnSecondary.set(1)
+            else:
+                # CNAME update failed -> undefined state
+                metricIsOnPrimary.set(0)
+                metricIsOnSecondary.set(0)
         logger.debug('primaryConfidence? ' + str(primaryConfidence))
         
         # Wait until next check...
         logger.debug('Sleeping...')
-        HealthcheckEndpoint.lastLoop = datetime.datetime.now()
+        HealthcheckMetricEndpoint.lastLoop = datetime.datetime.now()
         time.sleep(loopTime)
 except KeyboardInterrupt:
     pass
