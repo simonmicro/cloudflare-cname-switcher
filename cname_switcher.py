@@ -43,7 +43,8 @@ assert len(config['primary']['subnets']) > 0 or len(config['secondary']['subnets
 primaryConfidence = int(config['primary']['confidence'] / 2)
 primarySubnets = [ipaddress.ip_network(n) for n in config['primary']['subnets']]
 secondarySubnets = [ipaddress.ip_network(n) for n in config['secondary']['subnets']]
-bothSubnetsAreSet = len(primarySubnets) > 0 and len(secondarySubnets) > 0
+primarySubnetsGiven = len(primarySubnets) > 0
+secondarySubnetsGiven = len(secondarySubnets) > 0
 telegramToken = config['telegram']['token']
 telegramTarget = config['telegram']['target']
 if telegramToken is not None:
@@ -220,9 +221,9 @@ try:
                 externalIsPrimary = True in [externalIPv4 in n for n in primarySubnets]
                 externalIsSecondary = True in [externalIPv4 in n for n in secondarySubnets]
                 logger.debug(f'IP-Owner? externalIsPrimary {externalIsPrimary}, externalIsSecondary {externalIsSecondary}')
-                if externalIsPrimary or (not bothSubnetsAreSet and not externalIsSecondary):
+                if externalIsPrimary or (not primarySubnetsGiven and not externalIsSecondary):
                     primaryConfidence += 1
-                elif externalIsSecondary or (not bothSubnetsAreSet and not externalIsPrimary):
+                elif externalIsSecondary or (not secondarySubnetsGiven and not externalIsPrimary):
                     primaryConfidence = 0
                 else:
                     logger.warning('External IP (' + str(externalIPv4) + ') is in neither the primary (' + str(primarySubnets) + ') nor the secondary (' + str(secondarySubnets) + ') subnet -> ignoring...')
