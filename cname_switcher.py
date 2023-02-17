@@ -92,6 +92,7 @@ metricHealthy = Gauge(args.metrics_prefix + '_healthy', 'Everything OK?', regist
 metricDurations = Gauge(args.metrics_prefix + '_durations', 'How long did it take to update XY?', ['dimension'], registry=metricRegistry)
 metricCnameTarget = Enum(args.metrics_prefix + '_cname_target', 'Which CNAME is currently active?', states=['primary', 'secondary', 'undefined'], registry=metricRegistry)
 metricCnameTarget.state('undefined') # initially we don't have anything set
+metricExternalIp = Info(args.metrics_prefix + '_external_ip', 'Most recent external IP', registry=metricRegistry)
 class HealthcheckMetricEndpoint(BaseHTTPRequestHandler):
     lastLoop = None
 
@@ -190,6 +191,7 @@ try:
                 
                 if externalIPv4 == ipaddress.IPv4Address('0.0.0.0'):
                     raise ValueError('External IPv4 is empty (0.0.0.0). Something seems wrong...')
+                metricExternalIp.info({'ip': str(externalIPv4)})
 
                 # Update the cname to the external ip...
                 if CloudflareDynDnsRecordId is not None and oldExternalIPv4 != externalIPv4:
