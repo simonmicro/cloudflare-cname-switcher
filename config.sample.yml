@@ -2,9 +2,9 @@ cloudflare:
   zone_id: null # Open the overview of the domain and look bottom-right to get that ID
   token: null # Cloudflare account -> API-Token -> Create a new one with the Zone.DNS permission
 general:
+  timeout: 10 # General timeout while interacting with network operations
   dynamic_cname: null # This CNAME will by updated to point to the primary/secondary records
   update_interval: 30 # Update interval. Please note the Client API are rate-limited by Cloudflare account to 1200 requests every 5 minutes
-  external_timeout: 10 # We'll try to get the external ip from up to 3 servers, each with a time of x
   external_resolver: default # You can here specify e.g. 'http://icanhazip.com/' to enforce using only one specific resolver (in case the 'default' are too unstable)...
   force_ipv4_only: false # Monkey-Patch some libs to only use IPv4 requests (useful if your connection uses IPv6 by default)
 telegram:

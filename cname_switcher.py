@@ -62,7 +62,7 @@ def resolveNameToRecordId(config, name):
             'Content-Type': 'application/json'
             }
     )
-    for dns in json.load(urlopen(request))['result']:
+    for dns in json.load(urlopen(request, timeout=config['general']['timeout']))['result']:
         if dns['name'] == name:
             logger.debug(name + ' record-id is ' + dns['id'])
             return dns['id']
@@ -88,9 +88,7 @@ metricRegistry = CollectorRegistry()
 metricInfo = Info(args.metrics_prefix + '_info', 'Information about this exporter', registry=metricRegistry)
 metricInfo.info({'instance': uuid.uuid4().hex})
 metricHealthy = Gauge(args.metrics_prefix + '_healthy', 'Everything OK?', registry=metricRegistry)
-metricExternalIPDuration = Gauge(args.metrics_prefix + '_external_ip_seconds', 'How long did it take to get the external IP?', registry=metricRegistry)
-if config['dyndns']['dyndns_target']:
-    metricDynDnsDuration = Gauge(args.metrics_prefix + '_dyndns_seconds', 'How long did it take to update the dyndns record?', registry=metricRegistry)
+metricDurations = Gauge(args.metrics_prefix + '_durations', 'How long did it take to update XY?', ['dimension'], registry=metricRegistry)
 metricIsOnPrimary = Gauge(args.metrics_prefix + '_primary_active', 'Is the CNAME set to the primary record?', registry=metricRegistry)
 metricIsOnSecondary = Gauge(args.metrics_prefix + '_secondary_active', 'Is the CNAME set to the secondary record?', registry=metricRegistry)
 class HealthcheckMetricEndpoint(BaseHTTPRequestHandler):
@@ -127,7 +125,7 @@ healthcheckThread.start()
 
 # Configure the ipgetter
 getter = IPGetter()
-getter.timeout = config['general']['external_timeout']
+getter.timeout = config['general']['timeout']
 
 logger.info('Startup complete.')
 oldExternalIPv4 = None
@@ -157,7 +155,8 @@ try:
                 data['text'] = message
             data = json.dumps(data)
             data = data.encode()
-            urlopen(req, timeout=10, data=data)
+            with metricDurations.labels(dimension='send_telegram').time():
+                urlopen(req, timeout=config['general']['timeout'], data=data)
             logger.info('Sent Telegram notification successfully: ' + message.replace('\n', ' '))
             if len(notificationBuffer):
                 retryThese = notificationBuffer
@@ -179,29 +178,65 @@ try:
 
     while True:
         # Get the external ip and validate primary cname allowance
-        try:
-            logger.debug('Resolving external IPv4...')
-            with metricExternalIPDuration.time():
-                if config['general']['external_resolver'] == 'default':
-                    externalIPv4 = ipaddress.ip_address(str(getter.get().v4))
-                else:
-                    externalIPv4 = ipaddress.ip_address(str(getter.get_from(config['general']['external_resolver']).v4))
-            
-            if externalIPv4 == ipaddress.IPv4Address('0.0.0.0'):
-                raise ValueError('External IPv4 is empty (0.0.0.0). Something seems wrong...')
+        with metricDurations.labels(dimension='loop').time():
+            try:
+                logger.debug('Resolving external IPv4...')
+                with metricDurations.labels(dimension='external_ip').time():
+                    if config['general']['external_resolver'] == 'default':
+                        externalIPv4 = ipaddress.ip_address(str(getter.get().v4))
+                    else:
+                        externalIPv4 = ipaddress.ip_address(str(getter.get_from(config['general']['external_resolver']).v4))
+                
+                if externalIPv4 == ipaddress.IPv4Address('0.0.0.0'):
+                    raise ValueError('External IPv4 is empty (0.0.0.0). Something seems wrong...')
 
-            # Update the cname to the external ip...
-            if CloudflareDynDnsRecordId is not None and oldExternalIPv4 != externalIPv4:
+                # Update the cname to the external ip...
+                if CloudflareDynDnsRecordId is not None and oldExternalIPv4 != externalIPv4:
+                    try:
+                        data = {
+                            'type': 'A',
+                            'name': config['dyndns']['dyndns_target'],
+                            'content': str(externalIPv4),
+                            'ttl': config['dyndns']['dyndns_ttl'],
+                            'proxied': False
+                        }
+                        request = Request(
+                            'https://api.cloudflare.com/client/v4/zones/' + config['cloudflare']['zone_id'] + '/dns_records/' + CloudflareDynDnsRecordId,
+                            method='PUT',
+                            data=bytes(json.dumps(data), encoding='utf8'),
+                            headers={
+                                'Authorization': 'Bearer ' + config['cloudflare']['token'],
+                                'Content-Type': 'application/json'
+                            }
+                        )
+                        with metricDurations.labels(dimension='dyndns').time():
+                            urlopen(request, timeout=config['general']['timeout'])
+                        logger.info('Updated ' + config['dyndns']['dyndns_target'] + ' to ' + data['content'])
+                        oldExternalIPv4 = externalIPv4 # Will be retried if not successful
+                    except Exception as e:
+                        logger.exception('Cloudflare A-record update error.')
+                        sendTelegramNotification(f'Something went wrong at the Cloudflare A-record updater: {e}', False)
+                
+                externalIsPrimary = True in [externalIPv4 in n for n in primarySubnets]
+                externalIsSecondary = True in [externalIPv4 in n for n in secondarySubnets]
+                logger.debug(f'IP-Owner? externalIsPrimary {externalIsPrimary}, externalIsSecondary {externalIsSecondary}')
+                if externalIsPrimary or (not bothSubnetsAreSet and not externalIsSecondary):
+                    primaryConfidence += 1
+                elif externalIsSecondary or (not bothSubnetsAreSet and not externalIsPrimary):
+                    primaryConfidence = 0
+                else:
+                    logger.warning('External IP (' + str(externalIPv4) + ') is in neither the primary (' + str(primarySubnets) + ') nor the secondary (' + str(secondarySubnets) + ') subnet -> ignoring...')
+                logger.debug('External IP is ' + str(externalIPv4))
+            except Exception as e:
+                logger.exception('External IPv4 resolve error.')
+                primaryConfidence = 0
+                sendTelegramNotification(f'Something went wrong at the external IPv4 resolver: {e}', False)
+
+            # And update the dns entry of Cloudflare...
+            def updateDynamicCname(config, data) -> bool:
                 try:
-                    data = {
-                        'type': 'A',
-                        'name': config['dyndns']['dyndns_target'],
-                        'content': str(externalIPv4),
-                        'ttl': config['dyndns']['dyndns_ttl'],
-                        'proxied': False
-                    }
                     request = Request(
-                        'https://api.cloudflare.com/client/v4/zones/' + config['cloudflare']['zone_id'] + '/dns_records/' + CloudflareDynDnsRecordId,
+                        'https://api.cloudflare.com/client/v4/zones/' + config['cloudflare']['zone_id'] + '/dns_records/' + CloudflareDnsRecordId,
                         method='PUT',
                         data=bytes(json.dumps(data), encoding='utf8'),
                         headers={
@@ -209,87 +244,55 @@ try:
                             'Content-Type': 'application/json'
                         }
                     )
-                    with metricDynDnsDuration.time():
-                        urlopen(request)
-                    logger.info('Updated ' + config['dyndns']['dyndns_target'] + ' to ' + data['content'])
-                    oldExternalIPv4 = externalIPv4 # Will be retried if not successful
+                    with metricDurations.labels(dimension='cname_update').time():
+                        urlopen(request, timeout=config['general']['timeout'])
+                    logger.info('Updated ' + config['general']['dynamic_cname'] + ' to ' + data['content'])
+                    return True
                 except Exception as e:
-                    logger.exception('Cloudflare A-record update error.')
-                    sendTelegramNotification(f'Something went wrong at the Cloudflare A-record updater: {e}', False)
+                    logger.exception('Cloudflare CNAME-record update error.')
+                    sendTelegramNotification(f'Something went wrong at the Cloudflare CNAME updater: {e}', False)
+                    return False
+
+            if primaryConfidence == config['primary']['confidence'] and not primaryActive:
+                data = {
+                    'type': 'CNAME',
+                    'name': config['general']['dynamic_cname'],
+                    'content': config['primary']['cname'],
+                    'ttl': config['primary']['ttl'],
+                    'proxied': False
+                }
+                if updateDynamicCname(config, data):
+                    sendTelegramNotification(f'Primary network connection *STABLE* since `{primaryConfidence}` checks. Failover INACTIVE. Current IPv4 is `{externalIPv4}`.', True)
+                    primaryActive = True
+                    metricIsOnPrimary.set(1)
+                    metricIsOnSecondary.set(0)
+                else:
+                    # CNAME update failed -> undefined state
+                    metricIsOnPrimary.set(0)
+                    metricIsOnSecondary.set(0)
+            elif primaryConfidence == 0 and primaryActive:
+                data = {
+                    'type': 'CNAME',
+                    'name': config['general']['dynamic_cname'],
+                    'content': config['secondary']['cname'],
+                    'ttl': config['secondary']['ttl'],
+                    'proxied': False
+                }
+                if updateDynamicCname(config, data):
+                    sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in `{loopTime}` seconds... Current IPv4 is `{externalIPv4}`.', True)
+                    primaryActive = False
+                    metricIsOnPrimary.set(0)
+                    metricIsOnSecondary.set(1)
+                else:
+                    # CNAME update failed -> undefined state
+                    metricIsOnPrimary.set(0)
+                    metricIsOnSecondary.set(0)
+            logger.debug('primaryConfidence? ' + str(primaryConfidence))
             
-            externalIsPrimary = True in [externalIPv4 in n for n in primarySubnets]
-            externalIsSecondary = True in [externalIPv4 in n for n in secondarySubnets]
-            if externalIsPrimary or (not bothSubnetsAreSet and not externalIsSecondary):
-                primaryConfidence += 1
-            elif externalIsSecondary or (not bothSubnetsAreSet and not externalIsPrimary):
-                primaryConfidence = 0
-            else:
-                logger.warning('External IP (' + str(externalIPv4) + ') is in neither the primary (' + str(primarySubnets) + ') nor the secondary (' + str(secondarySubnets) + ') subnet -> ignoring...')
-            logger.debug('External IP is ' + str(externalIPv4))
-        except Exception as e:
-            logger.exception('External IPv4 resolve error.')
-            primaryConfidence = 0
-            sendTelegramNotification(f'Something went wrong at the external IPv4 resolver: {e}', False)
-
-        # And update the dns entry of Cloudflare...
-        def updateDynamicCname(config, data) -> bool:
-            try:
-                urlopen(Request(
-                    'https://api.cloudflare.com/client/v4/zones/' + config['cloudflare']['zone_id'] + '/dns_records/' + CloudflareDnsRecordId,
-                    method='PUT',
-                    data=bytes(json.dumps(data), encoding='utf8'),
-                    headers={
-                        'Authorization': 'Bearer ' + config['cloudflare']['token'],
-                        'Content-Type': 'application/json'
-                    }
-                ))
-                logger.info('Updated ' + config['general']['dynamic_cname'] + ' to ' + data['content'])
-                return True
-            except Exception as e:
-                logger.exception('Cloudflare CNAME-record update error.')
-                sendTelegramNotification(f'Something went wrong at the Cloudflare CNAME updater: {e}', False)
-                return False
-
-        if primaryConfidence == config['primary']['confidence'] and not primaryActive:
-            data = {
-                'type': 'CNAME',
-                'name': config['general']['dynamic_cname'],
-                'content': config['primary']['cname'],
-                'ttl': config['primary']['ttl'],
-                'proxied': False
-            }
-            if updateDynamicCname(config, data):
-                sendTelegramNotification(f'Primary network connection *STABLE* since `{primaryConfidence}` checks. Failover INACTIVE. Current IPv4 is `{externalIPv4}`.', True)
-                primaryActive = True
-                metricIsOnPrimary.set(1)
-                metricIsOnSecondary.set(0)
-            else:
-                # CNAME update failed -> undefined state
-                metricIsOnPrimary.set(0)
-                metricIsOnSecondary.set(0)
-        elif primaryConfidence == 0 and primaryActive:
-            data = {
-                'type': 'CNAME',
-                'name': config['general']['dynamic_cname'],
-                'content': config['secondary']['cname'],
-                'ttl': config['secondary']['ttl'],
-                'proxied': False
-            }
-            if updateDynamicCname(config, data):
-                sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in `{loopTime}` seconds... Current IPv4 is `{externalIPv4}`.', True)
-                primaryActive = False
-                metricIsOnPrimary.set(0)
-                metricIsOnSecondary.set(1)
-            else:
-                # CNAME update failed -> undefined state
-                metricIsOnPrimary.set(0)
-                metricIsOnSecondary.set(0)
-        logger.debug('primaryConfidence? ' + str(primaryConfidence))
-        
-        # Wait until next check...
-        logger.debug('Sleeping...')
-        HealthcheckMetricEndpoint.lastLoop = datetime.datetime.now()
-        time.sleep(loopTime)
+            # Wait until next check...
+            logger.debug('Sleeping...')
+            HealthcheckMetricEndpoint.lastLoop = datetime.datetime.now()
+            time.sleep(loopTime)
 except KeyboardInterrupt:
     pass
         
