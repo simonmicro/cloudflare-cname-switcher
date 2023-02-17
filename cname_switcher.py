@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--config', '-c', type=str, required=True, help='Path to the configuration file')
+parser.add_argument('--config', '-c', type=str, default='config.yml', help='Path to the configuration file')
 parser.add_argument('--debug', '-d', action='store_true', help='Something does not work? Debug mode!')
 parser.add_argument('--port', '-p', type=int, default=80, help='Port for the internal healthcheck-endpoint')
 args = parser.parse_args()
