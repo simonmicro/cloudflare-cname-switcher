@@ -162,6 +162,9 @@ try:
             else:
                 externalIPv4 = ipaddress.ip_address(str(getter.get_from(config['general']['external_resolver']).v4))
             
+            if externalIPv4 == ipaddress.IPv4Address('0.0.0.0'):
+                raise ValueError('External IPv4 is empty (0.0.0.0). Something seems wrong...')
+
             # Update the cname to the external ip...
             if CloudflareDynDnsRecordId is not None and oldExternalIPv4 != externalIPv4:
                 try:
