@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 from ipgetter2 import IPGetter
 from urllib.request import Request, urlopen
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from prometheus_client import Gauge, Info, generate_latest, CollectorRegistry
+from prometheus_client import Gauge, Info, Enum, generate_latest, CollectorRegistry
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', '-c', type=str, default='config.yml', help='Path to the configuration file')
@@ -90,8 +90,8 @@ metricInfo = Info(args.metrics_prefix + '_info', 'Information about this exporte
 metricInfo.info({'instance': uuid.uuid4().hex})
 metricHealthy = Gauge(args.metrics_prefix + '_healthy', 'Everything OK?', registry=metricRegistry)
 metricDurations = Gauge(args.metrics_prefix + '_durations', 'How long did it take to update XY?', ['dimension'], registry=metricRegistry)
-metricIsOnPrimary = Gauge(args.metrics_prefix + '_primary_active', 'Is the CNAME set to the primary record?', registry=metricRegistry)
-metricIsOnSecondary = Gauge(args.metrics_prefix + '_secondary_active', 'Is the CNAME set to the secondary record?', registry=metricRegistry)
+metricCnameTarget = Enum(args.metrics_prefix + '_cname_target', 'Which CNAME is currently active?', states=['primary', 'secondary', 'undefined'], registry=metricRegistry)
+metricCnameTarget.state('undefined') # initially we don't have anything set
 class HealthcheckMetricEndpoint(BaseHTTPRequestHandler):
     lastLoop = None
 
@@ -265,12 +265,10 @@ try:
                 if updateDynamicCname(config, data):
                     sendTelegramNotification(f'Primary network connection *STABLE* since `{primaryConfidence}` checks. Failover INACTIVE. Current IPv4 is `{externalIPv4}`.', True)
                     primaryActive = True
-                    metricIsOnPrimary.set(1)
-                    metricIsOnSecondary.set(0)
+                    metricCnameTarget.state('primary')
                 else:
                     # CNAME update failed -> undefined state
-                    metricIsOnPrimary.set(0)
-                    metricIsOnSecondary.set(0)
+                    metricCnameTarget.state('undefined')
             elif primaryConfidence == 0 and primaryActive:
                 data = {
                     'type': 'CNAME',
@@ -282,12 +280,10 @@ try:
                 if updateDynamicCname(config, data):
                     sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in `{loopTime}` seconds... Current IPv4 is `{externalIPv4}`.', True)
                     primaryActive = False
-                    metricIsOnPrimary.set(0)
-                    metricIsOnSecondary.set(1)
+                    metricCnameTarget.state('secondary')
                 else:
                     # CNAME update failed -> undefined state
-                    metricIsOnPrimary.set(0)
-                    metricIsOnSecondary.set(0)
+                    metricCnameTarget.state('undefined')
             logger.debug('primaryConfidence? ' + str(primaryConfidence))
             
             # Wait until next check...
