@@ -45,6 +45,9 @@ telegramToken = config['telegram']['token']
 telegramTarget = config['telegram']['target']
 if telegramToken is not None:
     assert telegramTarget, 'telegram.target should be given'
+if config['general']['force_ipv4_only']:
+    import urllib3
+    urllib3.util.connection.HAS_IPV6 = False
 
 def resolveNameToRecordId(config, name):
     logger.debug(f'Resolving {name} to a record-id...')

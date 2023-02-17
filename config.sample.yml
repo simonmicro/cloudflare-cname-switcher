@@ -6,6 +6,7 @@ general:
   update_interval: 30 # Update interval. Please note the Client API are rate-limited by Cloudflare account to 1200 requests every 5 minutes
   external_timeout: 10 # We'll try to get the external ip from up to 3 servers, each with a time of x
   external_resolver: default # You can here specify e.g. 'http://icanhazip.com/' to enforce using only one specific resolver (in case the 'default' are too unstable)...
+  force_ipv4_only: false # Monkey-Patch some libs to only use IPv4 requests (useful if your connection uses IPv6 by default)
 telegram:
   token: null # Optional: Set the bot token here
   target: null # Optional: Set the chat id here
