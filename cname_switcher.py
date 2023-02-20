@@ -86,8 +86,6 @@ if config['dyndns']['dyndns_target']:
 # Prepare the healthcheck/metric endpoint
 loopTime = config['general']['update_interval']
 metricRegistry = CollectorRegistry()
-metricInfo = Info(args.metrics_prefix + '_info', 'Information about this exporter', registry=metricRegistry)
-metricInfo.info({'instance': uuid.uuid4().hex})
 metricHealthy = Gauge(args.metrics_prefix + '_healthy', 'Everything OK?', registry=metricRegistry)
 metricDurations = Gauge(args.metrics_prefix + '_durations', 'How long did it take to update XY?', ['dimension'], registry=metricRegistry)
 metricCnameTarget = Enum(args.metrics_prefix + '_cname_target', 'Which CNAME is currently active?', states=['primary', 'secondary', 'undefined'], registry=metricRegistry)
