@@ -254,7 +254,7 @@ try:
                     sendTelegramNotification(f'Something went wrong at the Cloudflare CNAME updater: {e}', False)
                     return False
 
-            if primaryConfidence == config['primary']['confidence'] and not primaryActive:
+            if primaryConfidence >= config['primary']['confidence'] and not primaryActive:
                 data = {
                     'type': 'CNAME',
                     'name': config['general']['dynamic_cname'],
@@ -263,9 +263,9 @@ try:
                     'proxied': False
                 }
                 if updateDynamicCname(config, data):
-                    sendTelegramNotification(f'Primary network connection *STABLE* since `{primaryConfidence}` checks. Failover INACTIVE. Current IPv4 is `{externalIPv4}`.', True)
                     primaryActive = True
                     metricCnameTarget.state('primary')
+                    sendTelegramNotification(f'Primary network connection *STABLE* since `{primaryConfidence}` checks. Failover INACTIVE. Current IPv4 is `{externalIPv4}`.', True)
                 else:
                     # CNAME update failed -> undefined state
                     metricCnameTarget.state('undefined')
@@ -278,18 +278,19 @@ try:
                     'proxied': False
                 }
                 if updateDynamicCname(config, data):
-                    sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in `{loopTime}` seconds... Current IPv4 is `{externalIPv4}`.', True)
                     primaryActive = False
                     metricCnameTarget.state('secondary')
+                    sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in `{loopTime}` seconds... Current IPv4 is `{externalIPv4}`.', True)
                 else:
                     # CNAME update failed -> undefined state
                     metricCnameTarget.state('undefined')
             logger.debug('primaryConfidence? ' + str(primaryConfidence))
             
-            # Wait until next check...
-            logger.debug('Sleeping...')
             HealthcheckMetricEndpoint.lastLoop = datetime.datetime.now()
-            time.sleep(loopTime)
+
+        # Wait until next check...
+        logger.debug('Sleeping...')
+        time.sleep(loopTime)
 except KeyboardInterrupt:
     pass
         
