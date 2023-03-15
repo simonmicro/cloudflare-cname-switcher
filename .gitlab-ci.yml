@@ -17,3 +17,13 @@ docker-hub:
         - mkdir -p /kaniko/.docker
         - echo "{\"auths\":{\"$DHUB_REGISTRY\":{\"username\":\"$DHUB_REGISTRY_USER\",\"password\":\"$DHUB_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
         - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $DHUB_REGISTRY_IMAGE/cloudflare-cname-switcher:latest        
+
+github-ghcr:
+    stage: build
+    image:
+        name: gcr.io/kaniko-project/executor:debug
+        entrypoint: [""]
+    script:
+        - mkdir -p /kaniko/.docker
+        - echo "{\"auths\":{\"$GHCR_REGISTRY\":{\"username\":\"$GHCR_REGISTRY_USER\",\"password\":\"$GHCR_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $GHCR_REGISTRY_IMAGE/cloudflare-cname-switcher:latest        
