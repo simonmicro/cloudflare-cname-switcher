@@ -277,6 +277,7 @@ try:
                 else:
                     # CNAME update failed -> undefined state
                     metricCnameTarget.state('undefined')
+                    primaryActive = None
             elif primaryConfidence == 0 and primaryActive != False:
                 data = {
                     'type': 'CNAME',
@@ -292,6 +293,7 @@ try:
                 else:
                     # CNAME update failed -> undefined state
                     metricCnameTarget.state('undefined')
+                    primaryActive = None
             logger.debug('primaryConfidence? ' + str(primaryConfidence))
 
             # Retry the remaining messages...
