@@ -3,7 +3,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Setup/Libs
 RUN apt-get update && apt-get install -y python3 python3-pip curl && rm -rf /var/lib/apt/lists/*
-RUN pip3 install ipgetter2 pyyaml prometheus_client
+RUN pip3 install --break-system-packages ipgetter2 pyyaml prometheus_client
 
 # Setup/Script
 WORKDIR /workdir
