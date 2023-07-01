@@ -129,7 +129,7 @@ getter.timeout = config['general']['timeout']
 logger.info('Startup complete.')
 oldExternalIPv4 = None
 externalIPv4 = None
-primaryActive = False
+primaryActive = None
 ignoreFirstNotification = True
 notificationBuffer = [] # In case sending a notification failes, it will be stored here...
 if telegramToken is not None:
@@ -262,7 +262,7 @@ try:
                     sendTelegramNotification(f'Something went wrong at the Cloudflare CNAME updater: {e}', False)
                     return False
 
-            if primaryConfidence >= config['primary']['confidence'] and not primaryActive:
+            if primaryConfidence >= config['primary']['confidence'] and primaryActive != True:
                 data = {
                     'type': 'CNAME',
                     'name': config['general']['dynamic_cname'],
@@ -277,7 +277,7 @@ try:
                 else:
                     # CNAME update failed -> undefined state
                     metricCnameTarget.state('undefined')
-            elif primaryConfidence == 0 and primaryActive:
+            elif primaryConfidence == 0 and primaryActive != False:
                 data = {
                     'type': 'CNAME',
                     'name': config['general']['dynamic_cname'],
