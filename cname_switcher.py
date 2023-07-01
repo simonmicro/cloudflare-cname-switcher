@@ -271,8 +271,8 @@ try:
                     'proxied': False
                 }
                 if updateDynamicCname(config, data):
-                    primaryActive = True
                     metricCnameTarget.state('primary')
+                    primaryActive = True
                     sendTelegramNotification(f'Primary network connection *STABLE* since `{primaryConfidence}` checks. Failover INACTIVE. Current IPv4 is `{externalIPv4}`.', True)
                 else:
                     # CNAME update failed -> undefined state
@@ -286,8 +286,8 @@ try:
                     'proxied': False
                 }
                 if updateDynamicCname(config, data):
-                    primaryActive = False
                     metricCnameTarget.state('secondary')
+                    primaryActive = False
                     sendTelegramNotification(f'Primary network connection *FAILED*. Failover ACTIVE. Recheck in `{loopTime}` seconds... Current IPv4 is `{externalIPv4}`.', True)
                 else:
                     # CNAME update failed -> undefined state
