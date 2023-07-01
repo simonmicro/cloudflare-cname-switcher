@@ -157,23 +157,32 @@ try:
             with metricDurations.labels(dimension='send_telegram').time():
                 urlopen(req, timeout=config['general']['timeout'], data=data)
             logger.info('Sent Telegram notification successfully: ' + message.replace('\n', ' '))
-            if len(notificationBuffer):
-                retryThese = notificationBuffer
-                notificationBuffer = [] # Empty current buffer
-                logger.info(f'Processing {len(retryThese)} delayed massages...')
-                for params in retryThese:
-                    msg, markdown, timestamp = params
-                    if markdown:
-                        msg += f'\n\n_This is a delayed message from `{timestamp.isoformat()}`._'
-                    else:
-                        msg += f'\n\nThis is a delayed message from {timestamp.isoformat()}.'
-                    try:
-                        sendTelegramNotification(msg, markdown) # This will re-queue the message on failure...
-                    except:
-                        pass # Well... No.
+            retryTelegramNotifications()
         except:
             notificationBuffer.append((message, markdown, datetime.datetime.now(datetime.timezone.utc)))
             logger.exception('Telegram notification error.')
+
+    def retryTelegramNotifications():
+        global notificationBuffer, logger
+        if len(notificationBuffer):
+            retryThese = notificationBuffer
+            notificationBuffer = [] # Empty current buffer (prevent endless loop)
+            logger.info(f'Processing {len(retryThese)} delayed massages...')
+            notWorking = False
+            while len(retryThese):
+                msg, markdown, timestamp = retryThese.pop(0)
+                if markdown:
+                    msg += f'\n\n_This is a delayed message from `{timestamp.isoformat()}`._'
+                else:
+                    msg += f'\n\nThis is a delayed message from {timestamp.isoformat()}.'
+                try:
+                    if not notWorking:
+                        sendTelegramNotification(msg, markdown) # This will re-queue the message on failure...
+                    else:
+                        notificationBuffer.append((msg, markdown, timestamp)) # Re-queue the message
+                except:
+                    notWorking = True # Stop sending messages until it works again...
+                    pass # Well... The notification failed and was re-queued. Nothing we can do about it...
 
     while True:
         # Get the external ip and validate primary cname allowance
@@ -284,6 +293,9 @@ try:
                     # CNAME update failed -> undefined state
                     metricCnameTarget.state('undefined')
             logger.debug('primaryConfidence? ' + str(primaryConfidence))
+
+            # Retry the remaining messages...
+            retryTelegramNotifications()
             
             HealthcheckMetricEndpoint.lastLoop = datetime.datetime.now()
 
