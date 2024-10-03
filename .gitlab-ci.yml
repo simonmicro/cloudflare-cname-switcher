@@ -6,8 +6,14 @@ gitlab-ci:
     script:
         - mkdir -p /kaniko/.docker
         - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE/cloudflare-cname-switcher:latest
-        
+        - /kaniko/executor
+          --context $CI_PROJECT_DIR
+          --dockerfile $CI_PROJECT_DIR/Dockerfile
+          --destination $CI_REGISTRY_IMAGE/cloudflare-cname-switcher:v1
+          --destination $CI_REGISTRY_IMAGE/cloudflare-cname-switcher:latest
+    only:
+        - main
+
 docker-hub:
     stage: build
     image:
@@ -16,7 +22,13 @@ docker-hub:
     script:
         - mkdir -p /kaniko/.docker
         - echo "{\"auths\":{\"$DHUB_REGISTRY\":{\"username\":\"$DHUB_REGISTRY_USER\",\"password\":\"$DHUB_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $DHUB_REGISTRY_IMAGE/cloudflare-cname-switcher:latest        
+        - /kaniko/executor
+          --context $CI_PROJECT_DIR
+          --dockerfile $CI_PROJECT_DIR/Dockerfile
+          --destination $DHUB_REGISTRY_IMAGE/cloudflare-cname-switcher:v1
+          --destination $DHUB_REGISTRY_IMAGE/cloudflare-cname-switcher:latest
+    only:
+        - main
 
 github-ghcr:
     stage: build
@@ -26,4 +38,10 @@ github-ghcr:
     script:
         - mkdir -p /kaniko/.docker
         - echo "{\"auths\":{\"$GHCR_REGISTRY\":{\"username\":\"$GHCR_REGISTRY_USER\",\"password\":\"$GHCR_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $GHCR_REGISTRY_IMAGE/cloudflare-cname-switcher:latest        
+        - /kaniko/executor
+          --context $CI_PROJECT_DIR
+          --dockerfile $CI_PROJECT_DIR/Dockerfile
+          --destination $GHCR_REGISTRY_IMAGE/cloudflare-cname-switcher:v1
+          --destination $GHCR_REGISTRY_IMAGE/cloudflare-cname-switcher:latest
+    only:
+        - main
