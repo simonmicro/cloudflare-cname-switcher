@@ -214,12 +214,16 @@ impl Backend {
             let last_prioritized_endpoint =
                 last_active_endpoints.iter().find(|(_, _, p)| *p).cloned();
             for (endpoint, timestamp, primary) in &last_active_endpoints {
+                // check if the endpoint is still healthy
+                if !endpoint.healthy.load(std::sync::atomic::Ordering::Relaxed) {
+                    continue;
+                }
+                // check if the endpoint is sticky at all
                 let sticky_duration = match endpoint.sticky_duration.as_ref() {
                     Some(v) => v,
                     None => continue, // no sticky duration, ignore
                 };
-
-                // → for each primary sticky endpoint, take them over
+                // for each primary sticky endpoint, select it too
                 if *primary {
                     // → re-add them to the list of selected endpoints with current timestamp
                     new_active_endpoints.insert((
@@ -229,7 +233,7 @@ impl Backend {
                     ));
                     debug!("Selected sticky, primary endpoint: {:?}", endpoint);
                 } else
-                // → for each non-primary check if their sticky duration expired, if so ignore
+                // for each non-primary check if their sticky duration expired, if so ignore
                 if *timestamp + *sticky_duration > std::time::SystemTime::now() {
                     // → re-add them to the list of selected endpoints with old timestamp
                     new_active_endpoints.insert((endpoint.clone(), *timestamp, false));
