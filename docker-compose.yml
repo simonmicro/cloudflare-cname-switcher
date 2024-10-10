@@ -1,7 +1,0 @@
-version: '3'
-services:
-    cname_switcher:
-        image: realsimonmicro/cloudflare-cname-switcher
-        restart: always
-        volumes:
-            - ./config:/workdir/config
