@@ -1,7 +1,5 @@
-use crate::endpoints::{ChangeReason, Endpoint, EndpointArc, MonitoringConfiguration};
-use crate::integrations::{
-    cloudflare::CloudflareConfiguration, dns::DnsConfiguration, telegram::TelegramConfiguration,
-};
+use crate::endpoints::{ChangeReason, Endpoint, EndpointArc};
+use crate::integrations::{cloudflare::CloudflareConfiguration, telegram::TelegramConfiguration};
 use log::{debug, error, info, warn};
 use yaml_rust2;
 
@@ -14,6 +12,54 @@ pub struct Backend {
 }
 
 impl Backend {
+    pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+        let record = match yaml["record"].as_str() {
+            Some(v) => v.to_string(),
+            None => {
+                return Err("Missing record".to_string());
+            }
+        };
+        let endpoints = match yaml["endpoints"].as_vec() {
+            Some(v) => {
+                let mut endpoints = std::collections::HashSet::new();
+                for endpoint in v {
+                    let endpoint = match Endpoint::from_yaml(&endpoint) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return Err(format!("Failed to parse endpoint: {}", e));
+                        }
+                    };
+                    endpoints.insert(EndpointArc::new(endpoint));
+                }
+                endpoints
+            }
+            None => {
+                return Err("Missing endpoints".to_string());
+            }
+        };
+        let cloudflare = match CloudflareConfiguration::from_yaml(&yaml["cloudflare"]) {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(format!("Failed to parse cloudflare: {}", e));
+            }
+        };
+        let telegram = match yaml["telegram"].is_null() {
+            true => None,
+            false => match TelegramConfiguration::from_yaml(&yaml["telegram"]) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    return Err(format!("Failed to parse telegram: {}", e));
+                }
+            },
+        };
+        Ok(Self {
+            record,
+            endpoints,
+            cloudflare,
+            telegram,
+        })
+    }
+
     pub fn from_config(yaml_str: &str) -> Result<Self, String> {
         let yaml = match yaml_rust2::YamlLoader::load_from_str(&yaml_str) {
             Ok(v) => v,
@@ -36,43 +82,8 @@ impl Backend {
             error!("==================================================");
             std::process::exit(1);
         }
-        // TODO parse the configuration
-        Ok(Self {
-            record: "_backend.example.com".to_string(),
-            endpoints: std::collections::HashSet::from([
-                EndpointArc::new(Endpoint {
-                    healthy: std::sync::atomic::AtomicBool::new(false),
-                    dns: DnsConfiguration {
-                        record: "_service_1.example.com".to_string(),
-                        ttl: 60,
-                        resolver: "1.1.1.1".to_string(),
-                    },
-                    monitoring: Some(MonitoringConfiguration {
-                        confidence: 3,
-                        uri: "http://_service_1.example.com/"
-                            .parse::<hyper::Uri>()
-                            .unwrap(),
-                        interval: std::time::Duration::from_secs(10),
-                        marker: None,
-                    }),
-                    sticky_duration: None,
-                    weight: 10,
-                }),
-                EndpointArc::new(Endpoint {
-                    healthy: std::sync::atomic::AtomicBool::new(false),
-                    dns: DnsConfiguration {
-                        record: "_service_2.example.com".to_string(),
-                        ttl: 300,
-                        resolver: "1.1.1.1".to_string(),
-                    },
-                    monitoring: None,
-                    sticky_duration: None,
-                    weight: 20,
-                }),
-            ]),
-            cloudflare: CloudflareConfiguration::new("test".to_string(), "test".to_string()),
-            telegram: Some(TelegramConfiguration::new("test".to_string(), 123456789)),
-        })
+
+        Self::from_yaml(yaml)
     }
 
     pub async fn run(&mut self) {

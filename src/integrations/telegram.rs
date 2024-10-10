@@ -9,6 +9,17 @@ pub struct TelegramConfiguration {
 }
 
 impl TelegramConfiguration {
+    pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+        let token = yaml["token"]
+            .as_str()
+            .ok_or("token is not a string")?
+            .to_string();
+        let chat_id = yaml["chat_id"]
+            .as_i64()
+            .ok_or("chat_id is not an integer")?;
+        Ok(Self::new(token, chat_id))
+    }
+
     pub fn new(token: String, chat_id: i64) -> Self {
         Self {
             send_client: HyperHttpClient::new(

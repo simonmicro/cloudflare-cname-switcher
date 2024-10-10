@@ -24,6 +24,23 @@ pub struct DnsConfiguration {
 }
 
 impl DnsConfiguration {
+    pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+        let record = yaml["record"]
+            .as_str()
+            .ok_or("record is not a string")?
+            .to_string();
+        let ttl = yaml["ttl"].as_i64().ok_or("ttl is not an integer")? as u16;
+        let resolver = yaml["resolver"]
+            .as_str()
+            .ok_or("resolver is not a string")?
+            .to_string();
+        Ok(Self {
+            record,
+            ttl,
+            resolver,
+        })
+    }
+
     pub async fn resolve(&self) -> Result<std::collections::HashSet<std::net::IpAddr>, DnsError> {
         // create message for ip-records
         let mut request = rustdns::Message::default();

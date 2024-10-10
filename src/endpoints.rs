@@ -13,6 +13,41 @@ pub struct MonitoringConfiguration {
     pub confidence: u8,
 }
 
+impl MonitoringConfiguration {
+    fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+        let uri = match yaml["uri"].as_str() {
+            Some(v) => match v.parse() {
+                Ok(v) => v,
+                Err(e) => return Err(format!("Failed to parse URI: {:?}", e)),
+            },
+            None => return Err("Missing 'uri' key".to_string()),
+        };
+        let interval = match yaml["interval"].as_i64() {
+            Some(v) => std::time::Duration::from_secs(v as u64),
+            None => return Err("Missing 'interval' key".to_string()),
+        };
+        let marker = match yaml["marker"].as_str() {
+            Some(v) => Some(v.to_string()),
+            None => None,
+        };
+        let confidence = match yaml["confidence"].as_i64() {
+            Some(v) => {
+                if v < 1 || v > 255 {
+                    return Err("Confidence must be between 1 and 255".to_string());
+                }
+                v as u8
+            }
+            None => return Err("Missing 'confidence' key".to_string()),
+        };
+        Ok(Self {
+            uri,
+            interval,
+            marker,
+            confidence,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct Endpoint {
     pub healthy: std::sync::atomic::AtomicBool,
@@ -25,6 +60,45 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
+    pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+        let dns = match DnsConfiguration::from_yaml(&yaml["dns"]) {
+            Ok(v) => v,
+            Err(e) => return Err(format!("Failed to parse DNS configuration: {:?}", e)),
+        };
+        let monitoring = match yaml["monitoring"].is_null() {
+            true => None,
+            false => Some(
+                match MonitoringConfiguration::from_yaml(&yaml["monitoring"]) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Err(format!("Failed to parse monitoring configuration: {:?}", e))
+                    }
+                },
+            ),
+        };
+        let healthy = std::sync::atomic::AtomicBool::new(false);
+        let weight = match yaml["weight"].as_i64() {
+            Some(v) => {
+                if v < 0 || v > 255 {
+                    return Err("Weight must be between 0 and 255".to_string());
+                }
+                v as u8
+            }
+            None => 0,
+        };
+        let sticky_duration = match yaml["sticky_duration"].as_i64() {
+            Some(v) => Some(std::time::Duration::from_secs(v as u64)),
+            None => None,
+        };
+        Ok(Self {
+            healthy,
+            dns,
+            monitoring,
+            weight,
+            sticky_duration,
+        })
+    }
+
     pub async fn monitor(
         &self,
         self_arc: EndpointArc,

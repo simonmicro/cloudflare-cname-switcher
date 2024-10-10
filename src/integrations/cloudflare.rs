@@ -58,6 +58,22 @@ pub struct CloudflareConfiguration {
 }
 
 impl CloudflareConfiguration {
+    pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+        let zone_id = yaml["zone_id"]
+            .as_str()
+            .ok_or("zone_id is not a string")?
+            .to_string();
+        let token = yaml["token"]
+            .as_str()
+            .ok_or("token is not a string")?
+            .to_string();
+        Ok(Self {
+            zone_id,
+            token,
+            _status_cache: None,
+        })
+    }
+
     async fn name_to_record_ids(
         &self,
         name: &str,
@@ -442,7 +458,7 @@ mod tests {
         (
             CloudflareConfiguration::new(
                 std::env::var("CLOUDFLARE_ZONE_ID").expect("CLOUDFLARE_ZONE_ID not set"),
-                std::env::var("CLOUDFLARE_TOKEN").expect("CLOUDFLARE_ZONE_ID not set"),
+                std::env::var("CLOUDFLARE_TOKEN").expect("CLOUDFLARE_TOKEN not set"),
             ),
             std::env::var("CLOUDFLARE_TLD").expect("CLOUDFLARE_TLD not set"),
         )
