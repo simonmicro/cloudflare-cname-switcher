@@ -102,86 +102,78 @@ impl Backend {
         type EndpointWithTimestampAndPrimary = (EndpointArc, std::time::SystemTime, bool);
         let mut last_active_endpoints =
             std::collections::HashSet::<EndpointWithTimestampAndPrimary>::new();
-        let mut first_run = true;
 
         loop {
-            // IF first run, instantly update
-            if !first_run {
-                // IF stickyness was active in last selected endpoints, we will wakeup on expired stickyness+1s (adding small delay to avoid not expireing stickyness)
-                let mut due_to_sticky_expiring_wakeup_in = None;
-                for (endpoint, timestamp, primary) in &last_active_endpoints {
-                    if *primary {
-                        continue; // primary endpoints stickiness is not relevant
-                    }
-                    if let Some(sticky_duration) = endpoint.sticky_duration.as_ref() {
-                        let now = std::time::SystemTime::now();
-                        // is the sticky duration already expired?
-                        if now.duration_since(*timestamp).unwrap() <= *sticky_duration {
-                            // not expired yet
-                            if let Some(scheduled_wakeup_duration) =
-                                due_to_sticky_expiring_wakeup_in.as_ref()
-                            {
-                                // if already set, take the minimum of the two
-                                due_to_sticky_expiring_wakeup_in = Some(std::cmp::min(
-                                    *scheduled_wakeup_duration,
-                                    *sticky_duration - now.duration_since(*timestamp).unwrap()
-                                        + std::time::Duration::from_secs(1),
-                                ));
-                            } else {
-                                // if not set, set it
-                                due_to_sticky_expiring_wakeup_in = Some(
-                                    now.duration_since(*timestamp).unwrap() - *sticky_duration
-                                        + std::time::Duration::from_secs(1),
-                                );
-                            }
+            // IF stickyness was active in last selected endpoints, we will wakeup on expired stickyness+1s (adding small delay to avoid not expireing stickyness)
+            let mut due_to_sticky_expiring_wakeup_in = None;
+            for (endpoint, timestamp, primary) in &last_active_endpoints {
+                if *primary {
+                    continue; // primary endpoints stickiness is not relevant
+                }
+                if let Some(sticky_duration) = endpoint.sticky_duration.as_ref() {
+                    let now = std::time::SystemTime::now();
+                    // is the sticky duration already expired?
+                    if now.duration_since(*timestamp).unwrap() <= *sticky_duration {
+                        // not expired yet
+                        if let Some(scheduled_wakeup_duration) =
+                            due_to_sticky_expiring_wakeup_in.as_ref()
+                        {
+                            // if already set, take the minimum of the two
+                            due_to_sticky_expiring_wakeup_in = Some(std::cmp::min(
+                                *scheduled_wakeup_duration,
+                                *sticky_duration - now.duration_since(*timestamp).unwrap()
+                                    + std::time::Duration::from_secs(1),
+                            ));
                         } else {
-                            // expired, schedule wakeup as soon as possible
-                            due_to_sticky_expiring_wakeup_in =
-                                Some(std::time::Duration::from_secs(0));
+                            // if not set, set it
+                            due_to_sticky_expiring_wakeup_in = Some(
+                                now.duration_since(*timestamp).unwrap() - *sticky_duration
+                                    + std::time::Duration::from_secs(1),
+                            );
                         }
+                    } else {
+                        // expired, schedule wakeup as soon as possible
+                        due_to_sticky_expiring_wakeup_in = Some(std::time::Duration::from_secs(0));
                     }
                 }
+            }
 
-                tokio::select! {
-                    // IF any change-reason was given, we will wakeup on that
-                    change_event = change_rx.recv() => {
-                        info!("Change event: {:?}", change_event);
-                        // → IF changed due to dns value change, ignore event if the causing endpoint is not in selected list
-                        if let Some(ChangeReason::EndpointDnsValuesChanged { endpoint }) = change_event {
-                            if !last_active_endpoints.iter().any(|(e, _, _)| *e == endpoint) {
-                                info!("Ignoring DNS change event for non-selected endpoint");
-                                continue;
-                            }
+            tokio::select! {
+                // IF any change-reason was given, we will wakeup on that
+                change_event = change_rx.recv() => {
+                    info!("Change event: {:?}", change_event);
+                    // → IF changed due to dns value change, ignore event if the causing endpoint is not in selected list
+                    if let Some(ChangeReason::EndpointDnsValuesChanged { endpoint }) = change_event {
+                        if !last_active_endpoints.iter().any(|(e, _, _)| *e == endpoint) {
+                            info!("Ignoring DNS change event for non-selected endpoint");
+                            continue;
                         }
                     }
-                    // IF sticky duration expired, we will wakeup on that
-                    _ = tokio::time::sleep(due_to_sticky_expiring_wakeup_in.unwrap_or(std::time::Duration::MAX)) => {
-                        info!("Stickyness of a non-primary selected endpoint expired");
-                    }
-                    // IF telegram has pending messages, sleep 30 seconds and then wake up
-                    _ = match self.telegram.as_ref() {
-                        Some(ref telegram) => {
-                            if telegram.has_pending() {
-                                tokio::time::sleep(std::time::Duration::from_secs(30))
-                            } else {
-                                tokio::time::sleep(std::time::Duration::MAX)
-                            }
-                        },
-                        None => tokio::time::sleep(std::time::Duration::MAX)
-                    } => {
-                        debug!("Telegram has pending messages");
-                        self.telegram.as_ref().unwrap().send().await;
-                        continue;
-                    }
-                    // IF any endpoint exited, we will wakeup on that
-                    _ = endpoint_tasks.join_next() => {
-                        error!("Endpoint-monitor task exited unexpectedly?!");
-                        break;
-                    }
                 }
-            } else {
-                info!("Performing initial update after start...");
-                first_run = false;
+                // IF sticky duration expired, we will wakeup on that
+                _ = tokio::time::sleep(due_to_sticky_expiring_wakeup_in.unwrap_or(std::time::Duration::MAX)) => {
+                    info!("Stickyness of a non-primary selected endpoint expired");
+                }
+                // IF telegram has pending messages, sleep 30 seconds and then wake up
+                _ = match self.telegram.as_ref() {
+                    Some(ref telegram) => {
+                        if telegram.has_pending() {
+                            tokio::time::sleep(std::time::Duration::from_secs(30))
+                        } else {
+                            tokio::time::sleep(std::time::Duration::MAX)
+                        }
+                    },
+                    None => tokio::time::sleep(std::time::Duration::MAX)
+                } => {
+                    debug!("Telegram has pending messages");
+                    self.telegram.as_ref().unwrap().send().await;
+                    continue;
+                }
+                // IF any endpoint exited, we will wakeup on that
+                _ = endpoint_tasks.join_next() => {
+                    error!("Endpoint-monitor task exited unexpectedly?!");
+                    break;
+                }
             }
 
             // filter available enpoints to only healthy ones
