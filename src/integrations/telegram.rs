@@ -1,5 +1,5 @@
 use crate::integrations::http::HyperHttpClient;
-use log::warn;
+use log::{debug, warn};
 
 /// NEVER allow debug output of this struct, as it contains sensitive information
 pub struct TelegramConfiguration {
@@ -87,7 +87,7 @@ impl TelegramConfiguration {
                 ),
                 (
                     "text".to_string(),
-                    serde_json::Value::String(content.to_string()),
+                    serde_json::Value::String(content.clone()),
                 ),
             ]));
 
@@ -102,7 +102,9 @@ impl TelegramConfiguration {
 
             // send the message
             match self.send_client.perform(request).await {
-                Ok(v) => v,
+                Ok(_) => {
+                    debug!("Sent message to {}: {:?}", self.chat_id, content);
+                }
                 Err(e) => {
                     warn!("Failed to send message: {:?}", e);
                     return;
