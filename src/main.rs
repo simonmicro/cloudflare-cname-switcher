@@ -112,8 +112,4 @@ async fn main() {
 
         first_run = false;
     }
-
-    todo!("prometheus metrics endpoint");
-    todo!("liveness endpoint");
-    todo!("healthcheck.io");
 }
