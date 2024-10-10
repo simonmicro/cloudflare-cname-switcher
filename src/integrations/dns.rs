@@ -41,65 +41,121 @@ impl DnsConfiguration {
         })
     }
 
+    /// send two queries against the resolver (since not multiple at once are always supported -> https://stackoverflow.com/a/4083071)
     pub async fn resolve(&self) -> Result<std::collections::HashSet<std::net::IpAddr>, DnsError> {
-        // create message for ip-records
-        let mut request = rustdns::Message::default();
-        request.add_question(
-            &self.record,
-            rustdns::types::Type::A,
-            rustdns::types::Class::Internet,
-        );
-        request.add_question(
-            &self.record,
-            rustdns::types::Type::AAAA,
-            rustdns::types::Class::Internet,
-        );
-        let request_bytes = request.to_vec().map_err(|e| DnsError::SerializeError(e))?;
+        let mut returnme = std::collections::HashSet::<std::net::IpAddr>::new();
 
-        // send it using UDP
+        // connect using UDP
         let sock = tokio::net::UdpSocket::bind("0.0.0.0:0")
             .await
             .map_err(|e| DnsError::BindError(e))?;
         sock.connect(format!("{}:{}", self.resolver, 53))
             .await
             .map_err(|e| DnsError::ConnectError(e))?;
+        debug!("resolving \"{}\" using {}", self.record, self.resolver);
 
-        // send the request and...
-        let len = sock
-            .send(&request_bytes)
-            .await
-            .map_err(|e| DnsError::SendError(e))?;
-        if len != request_bytes.len() {
-            return Err(DnsError::SendLengthTooShort);
+        // create message for ipv4-records
+        {
+            let mut request = rustdns::Message::default();
+            request.add_question(
+                &self.record,
+                rustdns::types::Type::A,
+                rustdns::types::Class::Internet,
+            );
+            let request_bytes = request.to_vec().map_err(|e| DnsError::SerializeError(e))?;
+
+            // send the request and...
+            let len = sock
+                .send(&request_bytes)
+                .await
+                .map_err(|e| DnsError::SendError(e))?;
+            if len != request_bytes.len() {
+                return Err(DnsError::SendLengthTooShort);
+            }
+
+            // ...wait for the response
+            let mut resp = [0; 4096];
+            let len = tokio::time::timeout(std::time::Duration::new(10, 0), sock.recv(&mut resp))
+                .await
+                .map_err(|e| DnsError::ReceiveTimeout(e))?
+                .map_err(|e| DnsError::ReceiveError(e))?;
+            let answer = rustdns::types::Message::from_slice(&resp[0..len])
+                .map_err(|e| DnsError::ReceivedUnexpectedType(e))?;
+            if answer.rcode != rustdns::types::Rcode::NoError {
+                return Err(DnsError::ReceiveParseError(answer.rcode));
+            }
+
+            // parse the response
+            for dns_record in answer.answers {
+                match dns_record.resource {
+                    rustdns::types::Resource::A(a) => {
+                        returnme.insert(std::net::IpAddr::V4(a));
+                    }
+                    _ => {}
+                }
+            }
         }
 
-        // ...wait for the response
-        let mut resp = [0; 4096];
-        let len = tokio::time::timeout(std::time::Duration::new(10, 0), sock.recv(&mut resp))
-            .await
-            .map_err(|e| DnsError::ReceiveTimeout(e))?
-            .map_err(|e| DnsError::ReceiveError(e))?;
-        let answer = rustdns::types::Message::from_slice(&resp[0..len])
-            .map_err(|e| DnsError::ReceivedUnexpectedType(e))?;
-        if answer.rcode != rustdns::types::Rcode::NoError {
-            return Err(DnsError::ReceiveParseError(answer.rcode));
-        }
+        // create message for ipv6-records
+        {
+            let mut request = rustdns::Message::default();
+            request.add_question(
+                &self.record,
+                rustdns::types::Type::AAAA,
+                rustdns::types::Class::Internet,
+            );
+            let request_bytes = request.to_vec().map_err(|e| DnsError::SerializeError(e))?;
 
-        // parse the response
-        let mut returnme = std::collections::HashSet::<std::net::IpAddr>::new();
-        for dns_record in answer.answers {
-            match dns_record.resource {
-                rustdns::types::Resource::A(a) => {
-                    returnme.insert(std::net::IpAddr::V4(a));
+            // send the request and...
+            let len = sock
+                .send(&request_bytes)
+                .await
+                .map_err(|e| DnsError::SendError(e))?;
+            if len != request_bytes.len() {
+                return Err(DnsError::SendLengthTooShort);
+            }
+
+            // ...wait for the response
+            let mut resp = [0; 4096];
+            let len = tokio::time::timeout(std::time::Duration::new(10, 0), sock.recv(&mut resp))
+                .await
+                .map_err(|e| DnsError::ReceiveTimeout(e))?
+                .map_err(|e| DnsError::ReceiveError(e))?;
+            let answer = rustdns::types::Message::from_slice(&resp[0..len])
+                .map_err(|e| DnsError::ReceivedUnexpectedType(e))?;
+            if answer.rcode != rustdns::types::Rcode::NoError {
+                return Err(DnsError::ReceiveParseError(answer.rcode));
+            }
+
+            // parse the response
+            let mut returnme = std::collections::HashSet::<std::net::IpAddr>::new();
+            for dns_record in answer.answers {
+                match dns_record.resource {
+                    rustdns::types::Resource::AAAA(aaaa) => {
+                        returnme.insert(std::net::IpAddr::V6(aaaa));
+                    }
+                    _ => {}
                 }
-                rustdns::types::Resource::AAAA(aaaa) => {
-                    returnme.insert(std::net::IpAddr::V6(aaaa));
-                }
-                _ => {}
             }
         }
 
         debug!("resolved \"{}\" to {:?}", self.record, returnme);
         Ok(returnme)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_resolve() {
+        let config = DnsConfiguration {
+            record: "example.com".to_string(),
+            ttl: 0,
+            resolver: "1.1.1.1".to_string(),
+        };
+        let result = config.resolve().await.unwrap();
+        assert!(result.len() > 0);
     }
 }
