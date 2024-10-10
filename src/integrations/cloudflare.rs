@@ -123,6 +123,14 @@ impl CloudflareConfiguration {
         Ok(result)
     }
 
+    fn _record_comment(&self) -> String {
+        format!(
+            "Managed by {} v{}",
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION")
+        )
+    }
+
     async fn _create_record(
         &self,
         name: &str,
@@ -146,6 +154,10 @@ impl CloudflareConfiguration {
             (
                 "ttl".to_string(),
                 serde_json::Value::Number(serde_json::Number::from(*ttl)),
+            ),
+            (
+                "comment".to_string(),
+                serde_json::Value::String(self._record_comment()),
             ),
         ]));
 
@@ -236,6 +248,10 @@ impl CloudflareConfiguration {
             (
                 "ttl".to_string(),
                 serde_json::Value::Number(serde_json::Number::from(*ttl)),
+            ),
+            (
+                "comment".to_string(),
+                serde_json::Value::String(self._record_comment()),
             ),
         ]));
 
