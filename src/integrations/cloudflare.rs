@@ -457,8 +457,8 @@ mod tests {
     fn get_test_config_from_env() -> (CloudflareConfiguration, String) {
         (
             CloudflareConfiguration::new(
-                std::env::var("CLOUDFLARE_ZONE_ID").expect("CLOUDFLARE_ZONE_ID not set"),
                 std::env::var("CLOUDFLARE_TOKEN").expect("CLOUDFLARE_TOKEN not set"),
+                std::env::var("CLOUDFLARE_ZONE_ID").expect("CLOUDFLARE_ZONE_ID not set"),
             ),
             std::env::var("CLOUDFLARE_TLD").expect("CLOUDFLARE_TLD not set"),
         )
