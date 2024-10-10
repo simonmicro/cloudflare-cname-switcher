@@ -37,6 +37,7 @@ You place this program on an external machine, which will test the endpoint reac
   * Duration statistics (last iteration, endpoint checks, ...)
   * Current IPv4/IPv6/CNAME addresses of the _endpoint_-/_backend_-records
 * Liveness endpoint (via `/healthz`)
+* Automatic configuration reload on file change
 
 ## Getting Started
 Go ahead and install the required packages:

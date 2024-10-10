@@ -95,9 +95,9 @@ impl Backend {
         for endpoint in &self.endpoints {
             let endpoint = endpoint.clone();
             let change_tx = change_tx.clone();
-            endpoint_tasks.spawn(tokio::spawn(async move {
+            endpoint_tasks.spawn(async move {
                 endpoint.monitor(endpoint.clone(), change_tx).await;
-            }));
+            });
         }
         type EndpointWithTimestampAndPrimary = (EndpointArc, std::time::SystemTime, bool);
         let mut last_active_endpoints =
