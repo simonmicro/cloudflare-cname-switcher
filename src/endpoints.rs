@@ -168,7 +168,7 @@ impl Endpoint {
 
             // no values, no monitoring
             if last_dns_values.len() == 0 {
-                info!("No DNS values for endpoint {}", self.dns.record);
+                warn!("No DNS values for endpoint \"{}\"", self.dns.record);
                 self._change_health(&self_arc, &change_tx, false).await;
                 confidence = 0;
                 continue;
