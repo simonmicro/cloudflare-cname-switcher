@@ -171,7 +171,7 @@ impl Backend {
                 }
                 // IF any endpoint exited, we will wakeup on that
                 _ = endpoint_tasks.join_next() => {
-                    error!("Endpoint-monitor task exited unexpectedly?!");
+                    error!("An endpoint-monitor task terminated unexpectedly?!");
                     break;
                 }
             }

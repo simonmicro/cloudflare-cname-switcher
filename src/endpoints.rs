@@ -121,7 +121,7 @@ impl Endpoint {
             Ok(v) => v,
             Err(e) => {
                 error!(
-                    "Failed to perform initial DNS values for endpoint {}: {:?}",
+                    "Failed to resolve initial DNS values for endpoint {}: {:?}",
                     self.dns.record, e
                 );
                 return;
