@@ -223,6 +223,10 @@ impl Backend {
                     Some(v) => v,
                     None => continue, // no sticky duration, ignore
                 };
+                // check if this endpoint is already selected
+                if new_active_endpoints.iter().any(|(e, _, _)| *e == *endpoint) {
+                    continue;
+                }
                 // for each primary sticky endpoint, select it too
                 if *primary {
                     // → re-add them to the list of selected endpoints with current timestamp
