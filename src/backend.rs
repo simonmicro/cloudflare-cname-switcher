@@ -114,7 +114,6 @@ impl Backend {
                     let now = std::time::SystemTime::now();
                     // is the sticky duration already expired?
                     if now.duration_since(*timestamp).unwrap() <= *sticky_duration {
-                        // not expired yet
                         if let Some(scheduled_wakeup_duration) =
                             due_to_sticky_expiring_wakeup_in.as_ref()
                         {
@@ -127,7 +126,7 @@ impl Backend {
                         } else {
                             // if not set, set it
                             due_to_sticky_expiring_wakeup_in = Some(
-                                now.duration_since(*timestamp).unwrap() - *sticky_duration
+                                *sticky_duration - now.duration_since(*timestamp).unwrap()
                                     + std::time::Duration::from_secs(1),
                             );
                         }
@@ -206,6 +205,7 @@ impl Backend {
                     }
                 };
             }
+            debug!("Selected primary endpoint: {:?}", new_prioritized_endpoint);
             let mut new_active_endpoints = std::collections::HashSet::<
                 EndpointWithTimestampAndPrimary,
             >::from([new_prioritized_endpoint.clone()]);
@@ -214,13 +214,26 @@ impl Backend {
             let last_prioritized_endpoint =
                 last_active_endpoints.iter().find(|(_, _, p)| *p).cloned();
             for (endpoint, timestamp, primary) in &last_active_endpoints {
+                let sticky_duration = match endpoint.sticky_duration.as_ref() {
+                    Some(v) => v,
+                    None => continue, // no sticky duration, ignore
+                };
+
+                // → for each primary sticky endpoint, take them over
+                if *primary {
+                    // → re-add them to the list of selected endpoints with current timestamp
+                    new_active_endpoints.insert((
+                        endpoint.clone(),
+                        std::time::SystemTime::now(),
+                        false,
+                    ));
+                    debug!("Selected sticky, primary endpoint: {:?}", endpoint);
+                } else
                 // → for each non-primary check if their sticky duration expired, if so ignore
-                if !primary
-                    && *timestamp + *endpoint.sticky_duration.as_ref().unwrap()
-                        <= std::time::SystemTime::now()
-                {
-                    // → re-add them to the list of selected endpoints with old timestamp and primary false
+                if *timestamp + *sticky_duration > std::time::SystemTime::now() {
+                    // → re-add them to the list of selected endpoints with old timestamp
                     new_active_endpoints.insert((endpoint.clone(), *timestamp, false));
+                    debug!("Selected sticky, non-primary endpoint: {:?}", endpoint);
                 }
             }
 
