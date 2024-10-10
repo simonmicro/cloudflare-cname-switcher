@@ -117,7 +117,6 @@ impl CloudflareConfiguration {
                 .ok_or(CloudflareApiError::SchemaParseError)?
                 .as_str()
                 .ok_or(CloudflareApiError::SchemaParseError)?;
-            debug!("  rid: {}", r_id);
             result.push_back(r_id.to_string());
         }
         Ok(result)

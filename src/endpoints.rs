@@ -117,6 +117,10 @@ impl Endpoint {
         assert!(monitoring.uri.host().is_some(), "URI must have a host");
 
         // initial resolve
+        debug!(
+            "Resolving initial DNS values for endpoint {}",
+            self.dns.record
+        );
         let mut last_dns_values = match self.dns.resolve().await {
             Ok(v) => v,
             Err(e) => {
