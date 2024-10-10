@@ -275,7 +275,7 @@ impl EndpointArc {
 
 impl std::cmp::PartialEq for EndpointArc {
     fn eq(&self, other: &Self) -> bool {
-        self == other
+        self.0 == other.0
     }
 }
 
