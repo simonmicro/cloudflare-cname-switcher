@@ -71,7 +71,7 @@ impl Backend {
                 }),
             ]),
             cloudflare: CloudflareConfiguration::new("test".to_string(), "test".to_string()),
-            telegram: None,
+            telegram: Some(TelegramConfiguration::new("test".to_string(), 123456789)),
         })
     }
 
@@ -241,10 +241,15 @@ impl Backend {
                 .iter()
                 .map(|(e, _, _)| e.clone())
                 .collect();
+            let ttl = new_active_endpoints
+                .iter()
+                .map(|(e, _, _)| e.dns.ttl)
+                .min()
+                .unwrap();
             for _ in 0..3 {
                 let result = self
                     .cloudflare
-                    .update(&self.record, endpoints.clone())
+                    .update(&self.record, endpoints.clone(), ttl)
                     .await;
                 if result.is_ok() {
                     ok = true;

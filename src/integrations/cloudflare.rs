@@ -112,7 +112,7 @@ impl CloudflareConfiguration {
         name: &str,
         r#type: &str,
         content: &str,
-        ttl: &u8,
+        ttl: &u16,
     ) -> Result<String, CloudflareApiError> {
         let data = serde_json::Value::Object(serde_json::Map::from_iter([
             (
@@ -177,7 +177,7 @@ impl CloudflareConfiguration {
         &self,
         name: &str,
         content: &str,
-        ttl: &u8,
+        ttl: &u16,
     ) -> Result<String, CloudflareApiError> {
         self._create_record(name, "CNAME", content, ttl).await
     }
@@ -186,7 +186,7 @@ impl CloudflareConfiguration {
         &self,
         name: &str,
         content: &std::net::IpAddr,
-        ttl: &u8,
+        ttl: &u16,
     ) -> Result<String, CloudflareApiError> {
         match content {
             std::net::IpAddr::V4(ip) => self._create_record(name, "A", &ip.to_string(), ttl).await,
@@ -202,7 +202,7 @@ impl CloudflareConfiguration {
         name: &str,
         record_id: &str,
         content: &str,
-        ttl: &u8,
+        ttl: &u16,
     ) -> Result<String, CloudflareApiError> {
         let data = serde_json::Value::Object(serde_json::Map::from_iter([
             (
@@ -303,7 +303,7 @@ impl CloudflareConfiguration {
         Ok(())
     }
 
-    pub fn new(zone_id: String, token: String) -> Self {
+    pub fn new(token: String, zone_id: String) -> Self {
         Self {
             zone_id,
             token,
@@ -316,6 +316,7 @@ impl CloudflareConfiguration {
         &mut self,
         record: &str,
         selected_endpoints: std::collections::HashSet<EndpointArc>,
+        ttl: u16,
     ) -> Result<(), CloudflareUpdateError> {
         assert!(
             selected_endpoints.len() > 0,
@@ -388,7 +389,7 @@ impl CloudflareConfiguration {
                         // something must have changed, while this does not recognize a single A-record, it will trigger on multiple (non-CNAME) records
                         return Err(CloudflareUpdateError::Conflict);
                     }
-                    self.update_record_cname(record, record_ids.front().unwrap(), cname, &60)
+                    self.update_record_cname(record, record_ids.front().unwrap(), cname, &ttl)
                         .await
                         .map_err(|e| CloudflareUpdateError::ApiError(e))?;
                 }
@@ -397,13 +398,13 @@ impl CloudflareConfiguration {
         } else {
             match &state {
                 CloudflareDnsValues::CName(cname) => {
-                    self.create_record_cname(record, &cname, &60)
+                    self.create_record_cname(record, &cname, &ttl)
                         .await
                         .map_err(|e| CloudflareUpdateError::ApiError(e))?;
                 }
                 CloudflareDnsValues::CNameWithSticky(ips) => {
                     for ip in ips {
-                        self.create_record_a_or_aaaa(record, &ip, &60)
+                        self.create_record_a_or_aaaa(record, &ip, &ttl)
                             .await
                             .map_err(|e| CloudflareUpdateError::ApiError(e))?;
                     }
@@ -419,8 +420,9 @@ impl CloudflareConfiguration {
         &mut self,
         record: &str,
         selected_endpoints: std::collections::HashSet<EndpointArc>,
+        ttl: u16,
     ) -> Result<(), CloudflareUpdateError> {
-        match self._update(record, selected_endpoints).await {
+        match self._update(record, selected_endpoints, ttl).await {
             Ok(v) => Ok(v),
             Err(e) => {
                 // on error also reset the cache
