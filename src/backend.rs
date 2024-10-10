@@ -224,20 +224,6 @@ impl Backend {
                 }
             }
 
-            if let Some(telegram) = self.telegram.as_ref() {
-                // queue telegram notification IF primary endpoint changed (not the address, but the record-names of the selected endpoints)
-                if last_prioritized_endpoint.is_none()
-                    || last_prioritized_endpoint.unwrap().0 != new_prioritized_endpoint.0
-                {
-                    telegram
-                        .queue_and_send(&format!(
-                            "Primary endpoint changed to {}",
-                            new_prioritized_endpoint.0.dns.record
-                        ))
-                        .await;
-                }
-            }
-
             // update cloudflare
             let mut ok = false;
             let endpoints: std::collections::HashSet<EndpointArc> = new_active_endpoints
@@ -262,6 +248,21 @@ impl Backend {
             if !ok {
                 error!("Failed multiple times to update Cloudflare, skipping update");
                 continue;
+            }
+            info!("Updated backend to new endpoints: {:?}", endpoints);
+
+            if let Some(telegram) = self.telegram.as_ref() {
+                // queue telegram notification IF primary endpoint changed (not the address, but the record-names of the selected endpoints)
+                if last_prioritized_endpoint.is_none()
+                    || last_prioritized_endpoint.as_ref().unwrap().0 != new_prioritized_endpoint.0
+                {
+                    telegram
+                        .queue_and_send(&format!(
+                            "Primary endpoint changed to {}",
+                            new_prioritized_endpoint.0.dns.record
+                        ))
+                        .await;
+                }
             }
 
             // update last_active_endpoints
