@@ -95,6 +95,7 @@ impl TelegramConfiguration {
             let builder = self.send_client.builder();
             let request = builder
                 .header(hyper::header::CONTENT_TYPE, "application/json")
+                .method(hyper::http::Method::POST)
                 .body(http_body_util::Full::<bytes::Bytes>::from(
                     serde_json::to_vec(&data).unwrap(),
                 ))
