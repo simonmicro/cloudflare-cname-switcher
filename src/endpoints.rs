@@ -180,7 +180,10 @@ impl Endpoint {
                     debug!("Monitoring {} via address-override", monitoring.uri);
                     Some(*last_dns_values.iter().next().unwrap())
                 }
-                false => None,
+                false => {
+                    debug!("Monitoring {} via DNS resolution", monitoring.uri);
+                    None
+                }
             };
 
             // then check the endpoint
