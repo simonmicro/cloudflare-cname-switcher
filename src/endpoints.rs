@@ -1,6 +1,6 @@
 use crate::integrations::http::HyperHttpClient;
 use crate::integrations::{dns::DnsConfiguration, telegram::TelegramConfiguration};
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 
 #[derive(Debug)]
 pub struct EndpointMetrics {
@@ -143,13 +143,14 @@ impl Endpoint {
             Some(v) => v,
             None => {
                 // if no monitoring is configured, we assume the endpoint is healthy
-                self.change_health(&self_arc, &change_tx, true).await;
+                self.change_health(&self_arc, Some(&change_tx), true).await;
                 tokio::time::sleep(std::time::Duration::MAX).await; // sleep forever
                 unreachable!("Sleeping forever should never return");
             }
         };
         assert!(monitoring.confidence > 0, "Confidence must be greater than 0, otherwise the endpoint will never be marked as unhealthy");
         assert!(monitoring.uri.host().is_some(), "URI must have a host");
+        self.change_health(&self_arc, None, false).await; // initial unhealthy state
 
         // initial resolve
         debug!("Resolving initial DNS values for endpoint {}", self);
@@ -169,10 +170,10 @@ impl Endpoint {
         loop {
             // apply current confidence to health status
             if confidence >= monitoring.confidence {
-                self.change_health(&self_arc, &change_tx, true).await;
+                self.change_health(&self_arc, Some(&change_tx), true).await;
                 confidence = monitoring.confidence; // prevent overflow
             } else {
-                self.change_health(&self_arc, &change_tx, false).await;
+                self.change_health(&self_arc, Some(&change_tx), false).await;
             }
 
             // sleep for the monitoring interval
@@ -206,7 +207,7 @@ impl Endpoint {
             // no values, no monitoring
             if last_dns_values.len() == 0 {
                 warn!("No DNS values for endpoint \"{}\"", self);
-                self.change_health(&self_arc, &change_tx, false).await;
+                self.change_health(&self_arc, Some(&change_tx), false).await;
                 confidence = 0;
                 continue;
             }
@@ -245,7 +246,7 @@ impl Endpoint {
                     Ok(v) => v,
                     Err(e) => {
                         warn!("Failed to perform request for endpoint {}: {:?}", self, e);
-                        self.change_health(&self_arc, &change_tx, false).await;
+                        self.change_health(&self_arc, Some(&change_tx), false).await;
                         confidence = 0;
                         continue;
                     }
@@ -257,7 +258,7 @@ impl Endpoint {
                         confidence += 1;
                     } else {
                         confidence = 0;
-                        info!("Marker not found in response body for endpoint {}", self);
+                        debug!("Marker not found in response body for endpoint {}", self);
                     }
                 } else {
                     // no further checks, we got an OK response
@@ -270,10 +271,11 @@ impl Endpoint {
     async fn change_health(
         &self,
         self_arc: &EndpointArc,
-        change_tx: &tokio::sync::mpsc::UnboundedSender<ChangeReason>,
+        change_tx: Option<&tokio::sync::mpsc::UnboundedSender<ChangeReason>>,
         healthy: bool,
     ) {
-        if self.healthy.load(std::sync::atomic::Ordering::Relaxed) == healthy {
+        if change_tx.is_some() && self.healthy.load(std::sync::atomic::Ordering::Relaxed) == healthy
+        {
             return; // no change
         }
         self.healthy
@@ -282,11 +284,13 @@ impl Endpoint {
             .endpoints_health
             .with_label_values(&[&self.name])
             .set(healthy as i64);
-        change_tx
-            .send(ChangeReason::EndpointHealthChanged {
-                endpoint: self_arc.clone(),
-            })
-            .unwrap();
+        if let Some(change_tx) = change_tx {
+            change_tx
+                .send(ChangeReason::EndpointHealthChanged {
+                    endpoint: self_arc.clone(),
+                })
+                .unwrap();
+        }
     }
 
     pub async fn resolve_dns(
