@@ -76,6 +76,7 @@ pub struct Endpoint {
     pub healthy: std::sync::atomic::AtomicBool,
     pub dns: DnsConfiguration,
     pub monitoring: Option<MonitoringConfiguration>,
+    pub name: String,
     /// lower values mean higher priority
     pub weight: u8,
     /// if enabled, the endpoint will be removed after the specified time, if a higher priority endpoint is available
@@ -103,6 +104,11 @@ impl Endpoint {
                 },
             ),
         };
+        let name = yaml["alias"]
+            .as_str()
+            .or_else(|| Some(&dns.record))
+            .unwrap()
+            .to_string();
         let healthy = std::sync::atomic::AtomicBool::new(false);
         let weight = match yaml["weight"].as_i64() {
             Some(v) => {
@@ -121,6 +127,7 @@ impl Endpoint {
             healthy,
             dns,
             monitoring,
+            name,
             weight,
             sticky_duration,
             metrics,
@@ -237,7 +244,7 @@ impl Endpoint {
                     let duration = start.elapsed().as_secs_f64();
                     self.metrics
                         .endpoint_durations
-                        .with_label_values(&[&self.dns.record, "request"])
+                        .with_label_values(&[&self.name, "request"])
                         .set(duration);
                     res
                 };
@@ -271,7 +278,7 @@ impl Endpoint {
             .store(healthy, std::sync::atomic::Ordering::Relaxed);
         self.metrics
             .endpoints_health
-            .with_label_values(&[&self.dns.record])
+            .with_label_values(&[&self.name])
             .set(healthy as i64);
         change_tx
             .send(ChangeReason::EndpointHealthChanged {
@@ -289,7 +296,7 @@ impl Endpoint {
         let duration = start.elapsed().as_secs_f64();
         self.metrics
             .endpoint_durations
-            .with_label_values(&[&self.dns.record, "dns"])
+            .with_label_values(&[&self.name, "dns"])
             .set(duration);
         res
     }
@@ -297,13 +304,13 @@ impl Endpoint {
 
 impl std::fmt::Display for Endpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "\"{}\"", self.dns.record)
+        write!(f, "\"{}\"", self.name)
     }
 }
 
 impl std::cmp::PartialEq for Endpoint {
     fn eq(&self, other: &Self) -> bool {
-        self.dns.record == other.dns.record
+        self.name == other.name
     }
 }
 
@@ -313,7 +320,7 @@ impl std::cmp::Eq for Endpoint {
 
 impl std::hash::Hash for Endpoint {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.dns.record.hash(state);
+        self.name.hash(state);
     }
 }
 #[derive(Debug, Clone, std::cmp::Eq)]
@@ -341,7 +348,7 @@ impl std::ops::Deref for EndpointArc {
 
 impl std::hash::Hash for EndpointArc {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.as_ref().dns.record.hash(state);
+        self.0.as_ref().name.hash(state);
     }
 }
 

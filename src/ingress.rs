@@ -305,10 +305,7 @@ impl Ingress {
             {
                 info!(
                     "Updated ingress to new endpoints: {:?}",
-                    endpoints
-                        .iter()
-                        .map(|e| &e.dns.record)
-                        .collect::<Vec<&String>>()
+                    endpoints.iter().map(|e| &e.name).collect::<Vec<&String>>()
                 );
             }
 
@@ -321,7 +318,7 @@ impl Ingress {
                     telegram
                         .queue_and_send(&format!(
                             "Primary endpoint changed to {}",
-                            TelegramConfiguration::escape(&new_prioritized_endpoint.0.dns.record)
+                            TelegramConfiguration::escape(&new_prioritized_endpoint.0.name)
                         ))
                         .await;
                 }
@@ -331,7 +328,7 @@ impl Ingress {
             for endpoint in &self.endpoints {
                 let selected = new_active_endpoints.iter().any(|(e, _, _)| *e == *endpoint);
                 self.gauge_endpoint_selected
-                    .with_label_values(&[&endpoint.dns.record])
+                    .with_label_values(&[&endpoint.name])
                     .set(if selected { 1 } else { 0 });
             }
 
