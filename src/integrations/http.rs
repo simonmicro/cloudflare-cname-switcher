@@ -48,8 +48,12 @@ impl HyperHttpClient {
             host.push_str(":");
             host.push_str(&self.uri.port_u16().unwrap().to_string());
         }
+        let location = match self.uri.path_and_query() {
+            Some(pq) => pq.as_str(),
+            None => "/",
+        };
         hyper::Request::builder()
-            .uri(self.uri.clone())
+            .uri(location.parse::<hyper::Uri>().unwrap())
             .header(hyper::header::HOST, host)
     }
 
