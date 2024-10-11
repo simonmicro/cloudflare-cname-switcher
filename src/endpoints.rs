@@ -137,7 +137,7 @@ impl Endpoint {
             Some(v) => v,
             None => {
                 // if no monitoring is configured, we assume the endpoint is healthy
-                self._change_health(&self_arc, &change_tx, true).await;
+                self.change_health(&self_arc, &change_tx, true).await;
                 tokio::time::sleep(std::time::Duration::MAX).await; // sleep forever
                 unreachable!("Sleeping forever should never return");
             }
@@ -163,9 +163,9 @@ impl Endpoint {
         loop {
             // apply current confidence to health status
             if confidence >= monitoring.confidence {
-                self._change_health(&self_arc, &change_tx, true).await;
+                self.change_health(&self_arc, &change_tx, true).await;
             } else {
-                self._change_health(&self_arc, &change_tx, false).await;
+                self.change_health(&self_arc, &change_tx, false).await;
             }
 
             // sleep for the monitoring interval
@@ -208,7 +208,7 @@ impl Endpoint {
             // no values, no monitoring
             if last_dns_values.len() == 0 {
                 warn!("No DNS values for endpoint \"{}\"", self);
-                self._change_health(&self_arc, &change_tx, false).await;
+                self.change_health(&self_arc, &change_tx, false).await;
                 confidence = 0;
                 continue;
             }
@@ -239,7 +239,7 @@ impl Endpoint {
                         Ok(v) => v,
                         Err(e) => {
                             warn!("Failed to perform request for endpoint {}: {:?}", self, e);
-                            self._change_health(&self_arc, &change_tx, false).await;
+                            self.change_health(&self_arc, &change_tx, false).await;
                             confidence = 0;
                             continue;
                         }
@@ -268,7 +268,7 @@ impl Endpoint {
         }
     }
 
-    async fn _change_health(
+    async fn change_health(
         &self,
         self_arc: &EndpointArc,
         change_tx: &tokio::sync::mpsc::UnboundedSender<ChangeReason>,

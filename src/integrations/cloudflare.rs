@@ -135,7 +135,7 @@ impl CloudflareConfiguration {
         Ok(result)
     }
 
-    fn _record_comment(&self) -> String {
+    fn record_comment(&self) -> String {
         format!(
             "Managed by {} v{}",
             env!("CARGO_PKG_NAME"),
@@ -143,7 +143,7 @@ impl CloudflareConfiguration {
         )
     }
 
-    async fn _create_record(
+    async fn create_record(
         &self,
         name: &str,
         r#type: &str,
@@ -169,7 +169,7 @@ impl CloudflareConfiguration {
             ),
             (
                 "comment".to_string(),
-                serde_json::Value::String(self._record_comment()),
+                serde_json::Value::String(self.record_comment()),
             ),
         ]));
 
@@ -219,7 +219,7 @@ impl CloudflareConfiguration {
         content: &str,
         ttl: &u16,
     ) -> Result<String, CloudflareApiError> {
-        self._create_record(name, "CNAME", content, ttl).await
+        self.create_record(name, "CNAME", content, ttl).await
     }
 
     async fn create_record_a_or_aaaa(
@@ -229,10 +229,9 @@ impl CloudflareConfiguration {
         ttl: &u16,
     ) -> Result<String, CloudflareApiError> {
         match content {
-            std::net::IpAddr::V4(ip) => self._create_record(name, "A", &ip.to_string(), ttl).await,
+            std::net::IpAddr::V4(ip) => self.create_record(name, "A", &ip.to_string(), ttl).await,
             std::net::IpAddr::V6(ip) => {
-                self._create_record(name, "AAAA", &ip.to_string(), ttl)
-                    .await
+                self.create_record(name, "AAAA", &ip.to_string(), ttl).await
             }
         }
     }
@@ -263,7 +262,7 @@ impl CloudflareConfiguration {
             ),
             (
                 "comment".to_string(),
-                serde_json::Value::String(self._record_comment()),
+                serde_json::Value::String(self.record_comment()),
             ),
         ]));
 
@@ -357,7 +356,7 @@ impl CloudflareConfiguration {
     }
 
     /// if multiple endpoints are given, they will result in multiple A/AAAA records (set their TTL to lowest of all endpoints), otherwise just a single CNAME record with endpoints TTL will be applied
-    pub async fn _update(
+    pub async fn inner_update(
         &mut self,
         record: &str,
         selected_endpoints: std::collections::HashSet<EndpointArc>,
@@ -468,7 +467,7 @@ impl CloudflareConfiguration {
         ttl: u16,
     ) -> Result<(), CloudflareUpdateError> {
         let start = std::time::Instant::now();
-        let res = match self._update(record, selected_endpoints, ttl).await {
+        let res = match self.inner_update(record, selected_endpoints, ttl).await {
             Ok(v) => Ok(v),
             Err(e) => {
                 // on error also reset the cache
