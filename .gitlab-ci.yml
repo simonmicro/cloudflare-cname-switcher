@@ -23,7 +23,6 @@ publish gitlab-ci:
     script:
         - crane auth login -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" "${CI_REGISTRY}"
         - crane tag "$CI_REGISTRY_IMAGE/cloudflare-cname-switcher:$CI_COMMIT_SHORT_SHA" "v2"
-        - crane tag "$CI_REGISTRY_IMAGE/cloudflare-cname-switcher:$CI_COMMIT_SHORT_SHA" "latest"
     only:
         - main
 
@@ -36,7 +35,6 @@ publish docker-hub:
         - crane auth login -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" "${CI_REGISTRY}"
         - crane auth login -u "${DHUB_REGISTRY_USER}" -p "${DHUB_REGISTRY_PASSWORD}" "${DHUB_REGISTRY}"
         - crane copy "$CI_REGISTRY_IMAGE/cloudflare-cname-switcher:$CI_COMMIT_SHORT_SHA" "$DHUB_REGISTRY_IMAGE/cloudflare-cname-switcher:v2"
-        - crane tag "$DHUB_REGISTRY_IMAGE/cloudflare-cname-switcher:v2" "latest"
     only:
         - main
 
@@ -49,6 +47,5 @@ publish github-ghcr:
         - crane auth login -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" "${CI_REGISTRY}"
         - crane auth login -u "${GHCR_REGISTRY_USER}" -p "${GHCR_REGISTRY_PASSWORD}" "${GHCR_REGISTRY}"
         - crane copy "$CI_REGISTRY_IMAGE/cloudflare-cname-switcher:$CI_COMMIT_SHORT_SHA" "$GHCR_REGISTRY_IMAGE/cloudflare-cname-switcher:v2"
-        - crane tag "$GHCR_REGISTRY_IMAGE/cloudflare-cname-switcher:v2" "latest"
     only:
         - main
