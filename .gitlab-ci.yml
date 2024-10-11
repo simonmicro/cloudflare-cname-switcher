@@ -9,7 +9,7 @@ gitlab-ci:
         - /kaniko/executor
           --context $CI_PROJECT_DIR
           --dockerfile $CI_PROJECT_DIR/Dockerfile
-          --destination $CI_REGISTRY_IMAGE/cloudflare-cname-switcher:v1
+          --destination $CI_REGISTRY_IMAGE/cloudflare-cname-switcher:v2
           --destination $CI_REGISTRY_IMAGE/cloudflare-cname-switcher:latest
     only:
         - main
@@ -25,7 +25,7 @@ docker-hub:
         - /kaniko/executor
           --context $CI_PROJECT_DIR
           --dockerfile $CI_PROJECT_DIR/Dockerfile
-          --destination $DHUB_REGISTRY_IMAGE/cloudflare-cname-switcher:v1
+          --destination $DHUB_REGISTRY_IMAGE/cloudflare-cname-switcher:v2
           --destination $DHUB_REGISTRY_IMAGE/cloudflare-cname-switcher:latest
     only:
         - main
@@ -41,7 +41,7 @@ github-ghcr:
         - /kaniko/executor
           --context $CI_PROJECT_DIR
           --dockerfile $CI_PROJECT_DIR/Dockerfile
-          --destination $GHCR_REGISTRY_IMAGE/cloudflare-cname-switcher:v1
+          --destination $GHCR_REGISTRY_IMAGE/cloudflare-cname-switcher:v2
           --destination $GHCR_REGISTRY_IMAGE/cloudflare-cname-switcher:latest
     only:
         - main

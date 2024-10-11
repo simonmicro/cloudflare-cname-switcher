@@ -1,5 +1,6 @@
 config.yml
 envsetup.source
+.vscode
 
 # Added by cargo
 
