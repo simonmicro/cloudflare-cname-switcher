@@ -233,21 +233,22 @@ impl Endpoint {
 
                 let response = {
                     let start = std::time::Instant::now();
-                    let res = match client.perform(request).await {
-                        Ok(v) => v,
-                        Err(e) => {
-                            warn!("Failed to perform request for endpoint {}: {:?}", self, e);
-                            self.change_health(&self_arc, &change_tx, false).await;
-                            confidence = 0;
-                            continue;
-                        }
-                    };
+                    let res = client.perform(request).await;
                     let duration = start.elapsed().as_secs_f64();
                     self.metrics
                         .endpoint_durations
                         .with_label_values(&[&self.name, "request"])
                         .set(duration);
                     res
+                };
+                let response = match response {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("Failed to perform request for endpoint {}: {:?}", self, e);
+                        self.change_health(&self_arc, &change_tx, false).await;
+                        confidence = 0;
+                        continue;
+                    }
                 };
 
                 if monitoring.marker.is_some() {
