@@ -107,6 +107,13 @@ impl Ingress {
         self.telegram.is_some()
     }
 
+    /// This implements the logic of the ingress controller. Here are a few scenarios:
+    /// #1 primary non-stick, secondary stick
+    /// → 1 get unhealthy, 2 will be elected as only primary, 1 get back healthy, 1 will be elected as primary with 2 as stick until expire, 2 sticky expires, 1 will be elected as only primary
+    /// #2 primary non-stick, secondary stick, tertiary stick
+    /// → 1&2 get unhealthy, 3 will be elected as only primary, 2 get back healthy, 2 will be elected as primary with 3 as stick until expire, 1 get back healthy, 1 will be elected as primary with 2&3 as stick until expire, 2&3 sticky expire: 1 will be elected as only primary
+    /// #3 pimary non-stick, secondary stick
+    /// → 1 get unhealthy, 2 will be elected as only primary, 1 get back healthy, 1 will be elected as primary with 2 as stick until expire, 1 get unhealthy, 2 will be elected as only primary (not sticky with itself...)
     pub async fn run(&self) {
         // create change-event channel MPSC for ChangeReason-items
         let (change_tx, mut change_rx) = tokio::sync::mpsc::unbounded_channel::<ChangeReason>();
@@ -341,13 +348,5 @@ impl Ingress {
         }
 
         endpoint_tasks.abort_all(); // *abort* all other tasks
-
-        // DOC three scenario →→ move this into doc-string
-        // #1 primary non-stick, secondary stick
-        // → 1 get unhealthy, 2 will be elected as only primary, 1 get back healthy, 1 will be elected as primary with 2 as stick until expire, 2 sticky expires, 1 will be elected as only primary
-        // #2 primary non-stick, secondary stick, tertiary stick
-        // → 1&2 get unhealthy, 3 will be elected as only primary, 2 get back healthy, 2 will be elected as primary with 3 as stick until expire, 1 get back healthy, 1 will be elected as primary with 2&3 as stick until expire, 2&3 sticky expire: 1 will be elected as only primary
-        // #3 pimary non-stick, secondary stick
-        // → 1 get unhealthy, 2 will be elected as only primary, 1 get back healthy, 1 will be elected as primary with 2 as stick until expire, 1 get unhealthy, 2 will be elected as only primary (not sticky with itself...)
     }
 }
