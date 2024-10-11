@@ -69,6 +69,13 @@ async fn main() {
                     }
                 }
             };
+            info!(
+                "Configuration for backend \"{}\" loaded: {:?}",
+                backend.record, backend.endpoints
+            );
+            if backend.has_telegram() {
+                info!("Telegram notifications are enabled.");
+            }
         }
 
         // setup file change handler

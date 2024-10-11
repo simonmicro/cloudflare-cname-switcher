@@ -117,16 +117,13 @@ impl Endpoint {
         assert!(monitoring.uri.host().is_some(), "URI must have a host");
 
         // initial resolve
-        debug!(
-            "Resolving initial DNS values for endpoint {}",
-            self.dns.record
-        );
+        debug!("Resolving initial DNS values for endpoint {}", self);
         let mut last_dns_values = match self.dns.resolve().await {
             Ok(v) => v,
             Err(e) => {
                 error!(
                     "Failed to resolve initial DNS values for endpoint {}: {:?}",
-                    self.dns.record, e
+                    self, e
                 );
                 return;
             }
@@ -154,7 +151,7 @@ impl Endpoint {
                 Err(e) => {
                     warn!(
                         "Failed to resolve DNS values for endpoint {}: {:?}",
-                        self.dns.record, e
+                        self, e
                     );
                     continue;
                 }
@@ -172,7 +169,7 @@ impl Endpoint {
 
             // no values, no monitoring
             if last_dns_values.len() == 0 {
-                warn!("No DNS values for endpoint \"{}\"", self.dns.record);
+                warn!("No DNS values for endpoint \"{}\"", self);
                 self._change_health(&self_arc, &change_tx, false).await;
                 confidence = 0;
                 continue;
@@ -201,10 +198,7 @@ impl Endpoint {
                 let response = match client.perform(request).await {
                     Ok(v) => v,
                     Err(e) => {
-                        warn!(
-                            "Failed to perform request for endpoint {}: {:?}",
-                            self.dns.record, e
-                        );
+                        warn!("Failed to perform request for endpoint {}: {:?}", self, e);
                         self._change_health(&self_arc, &change_tx, false).await;
                         confidence = 0;
                         continue;
@@ -217,10 +211,7 @@ impl Endpoint {
                         confidence += 1;
                     } else {
                         confidence = 0;
-                        info!(
-                            "Marker not found in response body for endpoint {}",
-                            self.dns.record
-                        );
+                        info!("Marker not found in response body for endpoint {}", self);
                     }
                 } else {
                     // no further checks, we got an OK response
@@ -246,6 +237,12 @@ impl Endpoint {
                 endpoint: self_arc.clone(),
             })
             .unwrap();
+    }
+}
+
+impl std::fmt::Display for Endpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\"{}\"", self.dns.record)
     }
 }
 
@@ -295,7 +292,19 @@ impl std::hash::Hash for EndpointArc {
 
 #[derive(Debug)]
 pub enum ChangeReason {
-    Initial,
     EndpointHealthChanged { endpoint: EndpointArc },
     EndpointDnsValuesChanged { endpoint: EndpointArc },
+}
+
+impl std::fmt::Display for ChangeReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EndpointHealthChanged { endpoint } => {
+                write!(f, "EndpointHealthChanged: {}", endpoint.to_string())
+            }
+            Self::EndpointDnsValuesChanged { endpoint } => {
+                write!(f, "EndpointDnsValuesChanged: {}", endpoint.to_string())
+            }
+        }
+    }
 }

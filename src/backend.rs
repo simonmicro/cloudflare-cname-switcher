@@ -5,8 +5,8 @@ use yaml_rust2;
 
 pub struct Backend {
     /// FQDN
-    record: String,
-    endpoints: std::collections::HashSet<EndpointArc>,
+    pub record: String,
+    pub endpoints: std::collections::HashSet<EndpointArc>,
     cloudflare: CloudflareConfiguration,
     telegram: Option<TelegramConfiguration>,
 }
@@ -86,6 +86,10 @@ impl Backend {
         Self::from_yaml(yaml)
     }
 
+    pub fn has_telegram(&self) -> bool {
+        self.telegram.is_some()
+    }
+
     pub async fn run(&mut self) {
         // create change-event channel MPSC for ChangeReason-items
         let (change_tx, mut change_rx) = tokio::sync::mpsc::unbounded_channel::<ChangeReason>();
@@ -140,18 +144,25 @@ impl Backend {
             tokio::select! {
                 // IF any change-reason was given, we will wakeup on that
                 change_event = change_rx.recv() => {
-                    info!("Change event: {:?}", change_event);
+                    let change_event = match change_event {
+                        Some(v) => v,
+                        None => {
+                            error!("Change event channel closed unexpectedly?!");
+                            break;
+                        }
+                    };
+                    info!("Triggered by {}", change_event);
                     // → IF changed due to dns value change, ignore event if the causing endpoint is not in selected list
-                    if let Some(ChangeReason::EndpointDnsValuesChanged { endpoint }) = change_event {
+                    if let ChangeReason::EndpointDnsValuesChanged { endpoint } = change_event {
                         if !last_active_endpoints.iter().any(|(e, _, _)| *e == endpoint) {
-                            info!("Ignoring DNS change event for non-selected endpoint");
+                            info!("...ignoring DNS change event for non-selected endpoint");
                             continue;
                         }
                     }
                 }
                 // IF sticky duration expired, we will wakeup on that
                 _ = tokio::time::sleep(due_to_sticky_expiring_wakeup_in.unwrap_or(std::time::Duration::MAX)) => {
-                    info!("Stickyness of a non-primary selected endpoint expired");
+                    info!("Triggered by stickyness of a non-primary selected endpoint expired");
                 }
                 // IF telegram has pending messages, sleep 30 seconds and then wake up
                 _ = match self.telegram.as_ref() {
@@ -270,17 +281,27 @@ impl Backend {
                 error!("Failed multiple times to update Cloudflare, skipping update");
                 continue;
             }
-            info!("Updated backend to new endpoints: {:?}", endpoints);
+
+            {
+                info!(
+                    "Updated backend to new endpoints: {:?}",
+                    endpoints
+                        .iter()
+                        .map(|e| &e.dns.record)
+                        .collect::<Vec<&String>>()
+                );
+            }
 
             if let Some(telegram) = self.telegram.as_ref() {
                 // queue telegram notification IF primary endpoint changed (not the address, but the record-names of the selected endpoints)
-                if last_prioritized_endpoint.is_none()
-                    || last_prioritized_endpoint.as_ref().unwrap().0 != new_prioritized_endpoint.0
+                if last_prioritized_endpoint.is_some()
+                    && last_prioritized_endpoint.as_ref().unwrap().0 != new_prioritized_endpoint.0
                 {
+                    debug!("Sending telegram notification due to primary endpoint change");
                     telegram
                         .queue_and_send(&format!(
                             "Primary endpoint changed to {}",
-                            new_prioritized_endpoint.0.dns.record
+                            TelegramConfiguration::escape(&new_prioritized_endpoint.0.dns.record)
                         ))
                         .await;
                 }

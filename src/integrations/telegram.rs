@@ -33,10 +33,27 @@ impl TelegramConfiguration {
         }
     }
 
+    pub fn escape(message: &str) -> String {
+        let mut buffer = String::new();
+        for c in message.chars() {
+            // taken from https://core.telegram.org/bots/api#markdownv2-style
+            match c {
+                '_' | '*' | '[' | ']' | '(' | ')' | '~' | '`' | '>' | '#' | '+' | '-' | '='
+                | '|' | '{' | '}' | '.' => buffer.push('\\'),
+                _ => (),
+            }
+            buffer.push(c);
+        }
+        buffer
+    }
+
     pub async fn queue_and_send(&self, message: &str) {
         // add message to buffer
-        let mut queue = self._queue.lock().unwrap();
-        queue.push_back((message.to_string(), std::time::SystemTime::now()));
+        self._queue
+            .lock()
+            .unwrap()
+            .push_back((message.to_string(), std::time::SystemTime::now()));
+        self.send().await;
     }
 
     pub async fn send(&self) {
@@ -52,27 +69,15 @@ impl TelegramConfiguration {
             let elapsed = timestamp.elapsed().unwrap().as_secs();
             let timestamp: chrono::DateTime<chrono::Utc> = timestamp.into();
             if elapsed > 10 {
-                warn!("Message older than 10 seconds: {}", content);
+                let timestamp_str = timestamp.to_rfc3339();
+                warn!(
+                    "Message older than 10 seconds (from {timestamp_str}): {}",
+                    content
+                );
                 content = format!(
                     "{}\n\n_This is a delayed message from `{}`._",
-                    content,
-                    timestamp.to_rfc3339()
+                    content, timestamp_str
                 );
-            }
-
-            // escape the content
-            {
-                let mut buffer = String::new();
-                for c in content.chars() {
-                    // taken from https://core.telegram.org/bots/api#markdownv2-style
-                    match c {
-                        '_' | '*' | '[' | ']' | '(' | ')' | '~' | '`' | '>' | '#' | '+' | '-'
-                        | '=' | '|' | '{' | '}' | '.' => buffer.push('\\'),
-                        _ => (),
-                    }
-                    buffer.push(c);
-                }
-                content = buffer;
             }
 
             // build the request JSON
