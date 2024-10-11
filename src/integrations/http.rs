@@ -55,6 +55,10 @@ impl HyperHttpClient {
         hyper::Request::builder()
             .uri(location.parse::<hyper::Uri>().unwrap())
             .header(hyper::header::HOST, host)
+            .header(
+                hyper::header::USER_AGENT,
+                format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
+            )
     }
 
     /// after https://hyper.rs/guides/1/client/basic/, with tokio-rustls documentation
