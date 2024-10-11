@@ -1,4 +1,4 @@
-record: "_backend.example.com" # this record will by updated to point to the healthy endpoint(s)
+record: "_ingress.example.com" # this record will by updated to point to the healthy endpoint(s)
 endpoints: # a list of endpoints to monitor / fallback to
   - dns:
       record: "_service1.example.com"

@@ -17,7 +17,7 @@ pub enum DnsError {
 pub struct DnsConfiguration {
     /// FQDN, used for resolving the endpoints A/AAAA entries for stickyness
     pub record: String,
-    /// if this endpoint is selected, the TTL will be applied to the entries part of the backend record
+    /// if this endpoint is selected, the TTL will be applied to the entries part of the ingress record
     pub ttl: u16,
     /// the DNS record will be resolved by this resolver
     pub resolver: String,

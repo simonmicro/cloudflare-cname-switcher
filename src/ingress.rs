@@ -3,7 +3,7 @@ use crate::integrations::{cloudflare::CloudflareConfiguration, telegram::Telegra
 use log::{debug, error, info, warn};
 use yaml_rust2;
 
-pub struct Backend {
+pub struct Ingress {
     /// FQDN
     pub record: String,
     pub endpoints: std::collections::HashSet<EndpointArc>,
@@ -13,7 +13,7 @@ pub struct Backend {
     registry: std::sync::Arc<prometheus::Registry>,
 }
 
-impl Backend {
+impl Ingress {
     pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
         let registry = prometheus::Registry::new();
         let record = match yaml["record"].as_str() {
@@ -44,7 +44,7 @@ impl Backend {
         };
         let gauge_endpoint_selected = {
             let gauge_endpoints_health_opts =
-                prometheus::Opts::new("endpoint_selected", "Is the backend using this endpoint?");
+                prometheus::Opts::new("endpoint_selected", "Is the ingress using this endpoint?");
             let gauge_endpoints_health = Box::new(
                 prometheus::IntGaugeVec::new(gauge_endpoints_health_opts, &["name"]).unwrap(),
             );
@@ -304,7 +304,7 @@ impl Backend {
 
             {
                 info!(
-                    "Updated backend to new endpoints: {:?}",
+                    "Updated ingress to new endpoints: {:?}",
                     endpoints
                         .iter()
                         .map(|e| &e.dns.record)

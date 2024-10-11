@@ -1,4 +1,4 @@
-use cloudflare_cname_switcher::backend::Backend;
+use cloudflare_cname_switcher::ingress::Ingress;
 use log::{error, info, warn};
 use notify::{self, Watcher};
 
@@ -38,7 +38,7 @@ async fn main() {
     let mut first_run = true;
     loop {
         // load configuration
-        let mut backend;
+        let mut ingress;
         {
             if first_run {
                 info!("Loading configuration...");
@@ -57,7 +57,7 @@ async fn main() {
                     }
                 }
             };
-            backend = match Backend::from_config(&yaml_str) {
+            ingress = match Ingress::from_config(&yaml_str) {
                 Ok(v) => v,
                 Err(e) => {
                     error!("Failed to parse configuration file: {}", e);
@@ -70,10 +70,10 @@ async fn main() {
                 }
             };
             info!(
-                "Configuration for backend \"{}\" loaded: {:?}",
-                backend.record, backend.endpoints
+                "Configuration for ingress \"{}\" loaded: {:?}",
+                ingress.record, ingress.endpoints
             );
-            if backend.has_telegram() {
+            if ingress.has_telegram() {
                 info!("Telegram notifications are enabled.");
             }
         }
@@ -91,8 +91,8 @@ async fn main() {
         let mut hup_listener =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup()).unwrap();
         tokio::select! {
-            _ = backend.run() => {
-                error!("Backend-run task terminated unexpectedly?!");
+            _ = ingress.run() => {
+                error!("Ingress-run task terminated unexpectedly?!");
                 std::process::exit(2);
             },
             _ = hup_listener.recv() => {
@@ -104,7 +104,7 @@ async fn main() {
                 // just let the loop continue
             }
             _ = tokio::signal::ctrl_c() => {
-                // the backend-run task was already cancelled at this point
+                // the ingress-run task was already cancelled at this point
                 info!("Shutting down...");
                 return;
             }
