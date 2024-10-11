@@ -1,14 +1,51 @@
-This is a Python script to update a (here called) dynamic CNAME on Cloudflare to either a primary CNAME or a secondary CNAME.
-This is useful e.g. when you have one CNAME which is fast but sometimes cuts out and another one, which is slow but stable and you want to use to route everything over during any downtime of the primary.
+# Cloudflare CNAME Switcher
+An external tool to automatically update a dynamic CNAME on Cloudflare to point to another CNAME or (multiple-) A/AAAA records, based on the current endpoint reachability.
 
-Also the default configuration will tend to prefer the secondary (with higher TTLs and a confidence level for the primary).
+## How does this work?
+You place this program on an external machine, which will test the endpoint reachability of the primary and secondary endpoints. Based on the results, it will update the CNAME to point to the currently best reachable endpoint. Every endpoint may have difffernt TTLs, so clients may stick longer to the secondary endpoint, even if the primary is reachable again.
 
-_Please note:_ This script uses a ton of external ip providers and it can take up to 24 hours after starting until they are rated properly (some tend to be unavailable
-or just report wrong public ip addresses) - during this period the script will switch without reason between primary and secondary! **Also this script supports only IPv4 for now.**
+### Typical application scenario
+* Multiple _service_-records (`service1.example.com`, `service2.example.com`), hosted on the same reverse proxy, pointing to the same `ingress.example.com` record
+* Central `ingress.example.com` _ingress_-record to point to the currently best reachable service
+* Primary _endpoint_-record over `primary.example.com` (either CNAME or A/AAAA record) using a cable connection
+* Secondary _endpoint_-record over `secondary.example.com` (either CNAME or A/AAAA record) using a mobile connection
 
-Make sure to also install the following packages:
-* `ipgetter2`
-* `pyyaml`
-* `prometheus_client`
+### Typical workflow
+1. CCS starts monitoring of all _endpoints_ (primary, secondary) and marks them as online (...)
+   1. Also periodically updating the A/AAAA record-values-cache for stickiness operations
+2. Every time an _endpoint_ state (online/offline) changes...
+   1. Update the _ingress_ record to point to (either)...
+      1. A reachable endpoint with the lowest configured priority
+      2. A combination of reachable endpoints, if stickiness is enabled
+   2. CCS queue a notification to be sent
 
-Also this script can update another dns a-record to point to the current external ip.
+### When is an endpoint considered online?
+* Periodically fetching an HTTP/S response from an endpoint
+* Checking the content for a specific string to prevent passing of internal server errors being masked by a reverse proxy as 200-OK
+* Applying a cooldown: An endpoint must be reachable for a configurable amount of subsequent checks to be considered online
+
+## Features
+* Sticky endpoints: After the _ingress_ record is updated from a secondary to a primary endpoint again, the A/AAAA records of the secondary endpoint are kept in the _ingress_ record for a configurable amount of time
+  * Instead of a CNAME to a single endpoint, you may also temporarily use multiple A/AAAA records pointing to different endpoints
+  * TTL is then forced to the lowest TTL out of all mixed endpoints, so clients will continue to mix between all the endpoints (as none expire earlier)
+* Cloudflare support :P
+  * A/AAAA, CNAME records as _ingress_ or _endpoint_
+* Telegram notifications
+  * Automatic retry on failure
+  * Details about _endpoint_ reachability and _ingress_ record
+* Prometheus metrics (via `/metrics`)
+  * Duration statistics (last iteration, endpoint checks, ...)
+  * Current IPv4/IPv6/CNAME addresses of the _endpoint_-/_ingress_-records
+* Liveness endpoint (via `/healthz`)
+* Automatic configuration reload on file change
+
+## Getting Started
+Go ahead, build the program and run it!
+```bash
+cargo run --release
+```
+
+Then copy the `config.sample.yaml` to `config.yaml` and adjust the settings to your needs. You may also use the environment variable `BIND_ADDRESS` to change the listening host and port of the HTTP server. This was implemented in an environment variable to allow for a more flexible configuration in a containerized environment.
+
+## Run it!
+You may either start this directly on your machine, use the provided `Dockerfile` to build a container or use a pre-built container from one of the supported registires (see `.gitlab-ci.yml`).

@@ -1,18 +1,14 @@
-FROM debian:stable-slim
-ENV DEBIAN_FRONTEND=noninteractive
+FROM rust:1.81-alpine as builder
 
-# Setup/Libs
-RUN apt-get update && apt-get install -y python3 python3-pip curl && rm -rf /var/lib/apt/lists/*
-RUN pip3 install --break-system-packages ipgetter2 pyyaml prometheus_client
+WORKDIR /app
+COPY src /app/src
+COPY Cargo.lock /app/
+COPY Cargo.toml /app/
+RUN apk add --no-cache musl-dev
+RUN cargo build --release
 
-# Setup/Script
-WORKDIR /workdir
-COPY cname_switcher.py .
+FROM scratch
+COPY --from=builder /app/target/release/cloudflare-cname-switcher /app
 
-# Install the healthcheck
-HEALTHCHECK --start-period=10s --interval=60s CMD curl -f http://localhost/healthz || exit 1
-# Expose port for /healthz path
-EXPOSE 80
-
-# Command
-CMD python3 -u cname_switcher.py
+EXPOSE 3000
+CMD ["/app"]
