@@ -40,9 +40,9 @@ You place this program on an external machine, which will test the endpoint reac
 * Automatic configuration reload on file change
 
 ## Getting Started
-Go ahead and install the required packages:
+Go ahead, build the program and run it!
 ```bash
-pip3 install -r requirements.txt
+cargo run --release
 ```
 
 Then copy the `config.sample.yaml` to `config.yaml` and adjust the settings to your needs.
