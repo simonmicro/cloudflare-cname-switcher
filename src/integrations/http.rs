@@ -42,9 +42,15 @@ impl HyperHttpClient {
 
     /// get a pre-configured builder with the URI and HOST header set
     pub fn builder(&self) -> hyper::http::request::Builder {
+        // create host header with port if necessary
+        let mut host = self.uri.host().unwrap().to_string();
+        if self.uri.port_u16().is_some() {
+            host.push_str(":");
+            host.push_str(&self.uri.port_u16().unwrap().to_string());
+        }
         hyper::Request::builder()
             .uri(self.uri.clone())
-            .header(hyper::header::HOST, self.uri.host().unwrap())
+            .header(hyper::header::HOST, host)
     }
 
     /// after https://hyper.rs/guides/1/client/basic/, with tokio-rustls documentation
