@@ -314,10 +314,16 @@ impl Endpoint {
         };
         if let Some(monitoring) = self.monitoring.as_ref() {
             res += &TelegramConfiguration::escape(&format!(
-                " (every {}s, confidence of {})",
+                " (every {}s",
                 monitoring.interval.as_secs(),
-                monitoring.confidence
             ));
+            if monitoring.confidence > 0 {
+                res += &TelegramConfiguration::escape(&format!(
+                    ", confidence of {}",
+                    monitoring.confidence
+                ));
+            }
+            res += &TelegramConfiguration::escape(&format!(")",));
         }
         res
     }
