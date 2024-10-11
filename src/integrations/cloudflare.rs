@@ -54,7 +54,7 @@ impl CloudflareDnsValues {
 pub struct CloudflareConfiguration {
     zone_id: String,
     token: String,
-    status_cache: Option<CloudflareDnsValues>,
+    status_cache: std::sync::Mutex<Option<CloudflareDnsValues>>,
     gauge_update_duration: Option<Box<prometheus::Gauge>>,
 }
 
@@ -82,7 +82,7 @@ impl CloudflareConfiguration {
         Ok(Self {
             zone_id,
             token,
-            status_cache: None,
+            status_cache: None.into(),
             gauge_update_duration: Some(gauge_update_duration),
         })
     }
@@ -350,14 +350,14 @@ impl CloudflareConfiguration {
         Self {
             zone_id,
             token,
-            status_cache: None,
+            status_cache: None.into(),
             gauge_update_duration: None,
         }
     }
 
     /// if multiple endpoints are given, they will result in multiple A/AAAA records (set their TTL to lowest of all endpoints), otherwise just a single CNAME record with endpoints TTL will be applied
     pub async fn inner_update(
-        &mut self,
+        &self,
         record: &str,
         selected_endpoints: std::collections::HashSet<EndpointArc>,
         ttl: u16,
@@ -387,7 +387,8 @@ impl CloudflareConfiguration {
         // did the state change?
         let full_cleanup;
         let just_update;
-        if let Some(cache) = &self.status_cache {
+        let mut cache = self.status_cache.lock().unwrap();
+        if let Some(cache) = &*cache {
             if cache == &state {
                 debug!("No change requested for {}", record);
                 return Ok(());
@@ -455,12 +456,12 @@ impl CloudflareConfiguration {
             }
         }
 
-        self.status_cache = Some(state);
+        *cache = Some(state);
         Ok(())
     }
 
     pub async fn update(
-        &mut self,
+        &self,
         record: &str,
         selected_endpoints: std::collections::HashSet<EndpointArc>,
         ttl: u16,
@@ -471,7 +472,7 @@ impl CloudflareConfiguration {
             Err(e) => {
                 // on error also reset the cache
                 debug!("Resetting cache due to error: {:?}", e);
-                self.status_cache = None;
+                *self.status_cache.lock().unwrap() = None;
                 Err(e)
             }
         };

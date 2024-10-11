@@ -10,7 +10,7 @@ pub struct Ingress {
     gauge_endpoint_selected: Box<prometheus::IntGaugeVec>,
     cloudflare: CloudflareConfiguration,
     telegram: Option<TelegramConfiguration>,
-    registry: std::sync::Arc<prometheus::Registry>,
+    pub registry: std::sync::Arc<prometheus::Registry>,
 }
 
 impl Ingress {
@@ -106,7 +106,7 @@ impl Ingress {
         self.telegram.is_some()
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(&self) {
         // create change-event channel MPSC for ChangeReason-items
         let (change_tx, mut change_rx) = tokio::sync::mpsc::unbounded_channel::<ChangeReason>();
         // tokio::JoinSet all endpoints -> if any of those exit, we crash
@@ -118,8 +118,6 @@ impl Ingress {
                 endpoint.monitor(endpoint.clone(), change_tx).await;
             });
         }
-        let server_task = Self::server(self.registry.clone());
-        tokio::pin!(server_task);
         type EndpointWithTimestampAndPrimary = (EndpointArc, std::time::Instant, bool);
         let mut last_active_endpoints =
             std::collections::HashSet::<EndpointWithTimestampAndPrimary>::new();
@@ -195,10 +193,6 @@ impl Ingress {
                     debug!("Telegram has pending messages");
                     self.telegram.as_ref().unwrap().send().await;
                     continue;
-                }
-                _ = &mut server_task => {
-                    error!("Server task terminated unexpectedly?!");
-                    break;
                 }
                 // IF any endpoint exited, we will wakeup on that
                 _ = endpoint_tasks.join_next() => {
@@ -345,74 +339,5 @@ impl Ingress {
         // → 1&2 get unhealthy, 3 will be elected as only primary, 2 get back healthy, 2 will be elected as primary with 3 as stick until expire, 1 get back healthy, 1 will be elected as primary with 2&3 as stick until expire, 2&3 sticky expire: 1 will be elected as only primary
         // #3 pimary non-stick, secondary stick
         // → 1 get unhealthy, 2 will be elected as only primary, 1 get back healthy, 1 will be elected as primary with 2 as stick until expire, 1 get unhealthy, 2 will be elected as only primary (not sticky with itself...)
-    }
-
-    async fn server(registry: std::sync::Arc<prometheus::Registry>) -> Result<(), String> {
-        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
-        let listener = tokio::net::TcpListener::bind(addr)
-            .await
-            .map_err(|e| e.to_string())?;
-        info!("Listening on http://{}", addr);
-
-        loop {
-            let (stream, _) = listener.accept().await.map_err(|e| e.to_string())?;
-            debug!("New connection from: {:?}", stream.peer_addr());
-            let io = hyper_util::rt::TokioIo::new(stream);
-
-            // for each client spawn a new task
-            let registry = registry.clone();
-            tokio::task::spawn(async move {
-                // note that one client with one connection, may send multiple requests -> service_fn must be FN instead of FnOnce
-                if let Err(err) = hyper::server::conn::http1::Builder::new()
-                    .serve_connection(
-                        io,
-                        hyper::service::service_fn(
-                            move |req: hyper::Request<hyper::body::Incoming>| {
-                                let registry = registry.clone();
-                                async move { Self::serve_client(req, registry).await }
-                            },
-                        ),
-                    )
-                    .await
-                {
-                    warn!("Error serving connection: {:?}", err);
-                }
-            });
-        }
-    }
-
-    async fn serve_client(
-        req: hyper::Request<hyper::body::Incoming>,
-        registry: std::sync::Arc<prometheus::Registry>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>, std::convert::Infallible> {
-        match (req.method(), req.uri().path()) {
-            (&hyper::http::Method::GET, "/healthz") => Self::serve_healthz().await,
-            (&hyper::http::Method::GET, "/metrics") => Self::serve_metrics(registry).await,
-            _ => Ok(hyper::Response::builder()
-                .status(hyper::http::StatusCode::NOT_FOUND)
-                .body(http_body_util::Full::new(bytes::Bytes::from("Not Found")))
-                .unwrap()),
-        }
-    }
-
-    async fn serve_healthz(
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>, std::convert::Infallible> {
-        // nothing to check, if the server is up, we are healthy
-        Ok(hyper::Response::new(http_body_util::Full::new(
-            bytes::Bytes::from("OK"),
-        )))
-    }
-
-    async fn serve_metrics(
-        registry: std::sync::Arc<prometheus::Registry>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>, std::convert::Infallible> {
-        // create the buffer
-        let encoder = prometheus::TextEncoder::new();
-        let metric_families = registry.gather();
-        let response_str = encoder.encode_to_string(&metric_families).unwrap();
-        // create the response
-        Ok(hyper::Response::new(http_body_util::Full::new(
-            bytes::Bytes::from(response_str),
-        )))
     }
 }

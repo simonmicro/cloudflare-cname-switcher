@@ -1,3 +1,4 @@
+use cloudflare_cname_switcher::http_server::HttpServer;
 use cloudflare_cname_switcher::ingress::Ingress;
 use log::{error, info, warn};
 use notify::{self, Watcher};
@@ -35,11 +36,16 @@ async fn main() {
             }
         };
 
+    // start http-server
+    let http_server = HttpServer::new();
+    let server_task = http_server.run();
+    tokio::pin!(server_task);
+
     let mut first_run = true;
     loop {
         // load configuration
-        let mut ingress;
-        {
+        *http_server.registry.lock().await = None;
+        let ingress = {
             if first_run {
                 info!("Loading configuration...");
             } else {
@@ -57,7 +63,7 @@ async fn main() {
                     }
                 }
             };
-            ingress = match Ingress::from_config(&yaml_str) {
+            match Ingress::from_config(&yaml_str) {
                 Ok(v) => v,
                 Err(e) => {
                     error!("Failed to parse configuration file: {}", e);
@@ -68,14 +74,18 @@ async fn main() {
                         continue;
                     }
                 }
-            };
-            info!(
-                "Configuration for ingress \"{}\" loaded: {:?}",
-                ingress.record, ingress.endpoints
-            );
-            if ingress.has_telegram() {
-                info!("Telegram notifications are enabled.");
             }
+        };
+
+        // store the registry in the shared state with the http-server, so this instance will be marked as alive
+        *http_server.registry.lock().await = Some(ingress.registry.clone());
+
+        info!(
+            "Configuration for ingress \"{}\" loaded: {:?}",
+            ingress.record, ingress.endpoints
+        );
+        if ingress.has_telegram() {
+            info!("Telegram notifications are enabled.");
         }
 
         // setup file change handler
@@ -102,6 +112,10 @@ async fn main() {
             _ = watcher_rx.recv() => {
                 // on file change, reload configuration
                 // just let the loop continue
+            }
+            _ = &mut server_task => {
+                error!("Server task terminated unexpectedly?!");
+                return;
             }
             _ = tokio::signal::ctrl_c() => {
                 // the ingress-run task was already cancelled at this point
