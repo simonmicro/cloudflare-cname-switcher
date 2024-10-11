@@ -376,8 +376,7 @@ impl CloudflareConfiguration {
             let mut ips = std::collections::HashSet::<std::net::IpAddr>::new();
             for endpoint in selected_endpoints {
                 let resolved = endpoint
-                    .dns
-                    .resolve()
+                    .resolve_dns()
                     .await
                     .map_err(|e| CloudflareUpdateError::DnsError(e))?;
                 ips.extend(resolved);

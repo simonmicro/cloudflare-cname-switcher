@@ -18,10 +18,9 @@ impl EndpointMetrics {
         let endpoint_durations =
             Box::new(prometheus::GaugeVec::new(opts, &["name", "phase"]).unwrap());
         registry.register(endpoint_durations.clone()).unwrap();
-
         Self {
-            endpoints_health: endpoints_health,
-            endpoint_durations: endpoint_durations,
+            endpoints_health,
+            endpoint_durations,
         }
     }
 }
@@ -147,7 +146,7 @@ impl Endpoint {
 
         // initial resolve
         debug!("Resolving initial DNS values for endpoint {}", self);
-        let mut last_dns_values = match self.dns.resolve().await {
+        let mut last_dns_values = match self.resolve_dns().await {
             Ok(v) => v,
             Err(e) => {
                 error!(
@@ -175,24 +174,15 @@ impl Endpoint {
             first_run = false;
 
             // always resolve DNS-records values, if changed trigger update
-            let new_dns_values = {
-                let start = std::time::Instant::now();
-                let res = match self.dns.resolve().await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!(
-                            "Failed to resolve DNS values for endpoint {}: {:?}",
-                            self, e
-                        );
-                        continue;
-                    }
-                };
-                let duration = start.elapsed().as_secs_f64();
-                self.metrics
-                    .endpoint_durations
-                    .with_label_values(&[&self.dns.record, "dns"])
-                    .set(duration);
-                res
+            let new_dns_values = match self.resolve_dns().await {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!(
+                        "Failed to resolve DNS values for endpoint {}: {:?}",
+                        self, e
+                    );
+                    continue;
+                }
             };
             if last_dns_values != new_dns_values {
                 change_tx
@@ -288,6 +278,20 @@ impl Endpoint {
                 endpoint: self_arc.clone(),
             })
             .unwrap();
+    }
+
+    pub async fn resolve_dns(
+        &self,
+    ) -> Result<std::collections::HashSet<std::net::IpAddr>, crate::integrations::dns::DnsError>
+    {
+        let start = std::time::Instant::now();
+        let res = self.dns.resolve().await;
+        let duration = start.elapsed().as_secs_f64();
+        self.metrics
+            .endpoint_durations
+            .with_label_values(&[&self.dns.record, "dns"])
+            .set(duration);
+        res
     }
 }
 
