@@ -170,6 +170,7 @@ impl Endpoint {
             // apply current confidence to health status
             if confidence >= monitoring.confidence {
                 self.change_health(&self_arc, &change_tx, true).await;
+                confidence = monitoring.confidence; // prevent overflow
             } else {
                 self.change_health(&self_arc, &change_tx, false).await;
             }
