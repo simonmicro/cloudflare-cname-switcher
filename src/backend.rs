@@ -93,7 +93,6 @@ impl Backend {
     pub async fn run(&mut self) {
         // create change-event channel MPSC for ChangeReason-items
         let (change_tx, mut change_rx) = tokio::sync::mpsc::unbounded_channel::<ChangeReason>();
-        // tokio-spawn the monitor() for each endpoint
         // tokio::JoinSet all endpoints -> if any of those exit, we crash
         let mut endpoint_tasks = tokio::task::JoinSet::new();
         for endpoint in &self.endpoints {
@@ -103,6 +102,8 @@ impl Backend {
                 endpoint.monitor(endpoint.clone(), change_tx).await;
             });
         }
+        let server_task = Self::server();
+        tokio::pin!(server_task);
         type EndpointWithTimestampAndPrimary = (EndpointArc, std::time::SystemTime, bool);
         let mut last_active_endpoints =
             std::collections::HashSet::<EndpointWithTimestampAndPrimary>::new();
@@ -178,6 +179,10 @@ impl Backend {
                     debug!("Telegram has pending messages");
                     self.telegram.as_ref().unwrap().send().await;
                     continue;
+                }
+                _ = &mut server_task => {
+                    error!("Server task terminated unexpectedly?!");
+                    break;
                 }
                 // IF any endpoint exited, we will wakeup on that
                 _ = endpoint_tasks.join_next() => {
@@ -320,5 +325,49 @@ impl Backend {
         // → 1&2 get unhealthy, 3 will be elected as only primary, 2 get back healthy, 2 will be elected as primary with 3 as stick until expire, 1 get back healthy, 1 will be elected as primary with 2&3 as stick until expire, 2&3 sticky expire: 1 will be elected as only primary
         // #3 pimary non-stick, secondary stick
         // → 1 get unhealthy, 2 will be elected as only primary, 1 get back healthy, 1 will be elected as primary with 2 as stick until expire, 1 get unhealthy, 2 will be elected as only primary (not sticky with itself...)
+    }
+
+    async fn server() -> Result<(), String> {
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .map_err(|e| e.to_string())?;
+        info!("Listening on http://{}", addr);
+
+        loop {
+            let (stream, _) = listener.accept().await.map_err(|e| e.to_string())?;
+            let io = hyper_util::rt::TokioIo::new(stream);
+
+            // Spawn a tokio task to serve multiple connections concurrently
+            tokio::task::spawn(async move {
+                if let Err(err) = hyper::server::conn::http1::Builder::new()
+                    .serve_connection(io, hyper::service::service_fn(Backend::serve_client))
+                    .await
+                {
+                    warn!("Error serving connection: {:?}", err);
+                }
+            });
+        }
+    }
+
+    async fn serve_client(
+        req: hyper::Request<hyper::body::Incoming>,
+    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>, std::convert::Infallible> {
+        match (req.method(), req.uri().path()) {
+            (&hyper::http::Method::GET, "/healthz") => Self::serve_healthz(req).await,
+            _ => Ok(hyper::Response::builder()
+                .status(hyper::http::StatusCode::NOT_FOUND)
+                .body(http_body_util::Full::new(bytes::Bytes::from("Not Found")))
+                .unwrap()),
+        }
+    }
+
+    async fn serve_healthz(
+        _: hyper::Request<hyper::body::Incoming>,
+    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>, std::convert::Infallible> {
+        // nothing to check, if the server is up, we are healthy
+        Ok(hyper::Response::new(http_body_util::Full::new(
+            bytes::Bytes::from("OK"),
+        )))
     }
 }
