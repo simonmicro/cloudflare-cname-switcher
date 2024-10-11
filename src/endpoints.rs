@@ -3,6 +3,30 @@ use crate::integrations::http::HyperHttpClient;
 use log::{debug, error, info, warn};
 
 #[derive(Debug)]
+pub struct EndpointMetrics {
+    endpoints_health: Box<prometheus::IntGaugeVec>,
+    endpoint_durations: Box<prometheus::GaugeVec>,
+}
+
+impl EndpointMetrics {
+    pub fn new(registry: &prometheus::Registry) -> Self {
+        let opts = prometheus::Opts::new("endpoint_health", "Is the endpoint marked as healthy?");
+        let endpoints_health = Box::new(prometheus::IntGaugeVec::new(opts, &["name"]).unwrap());
+        registry.register(endpoints_health.clone()).unwrap();
+        let opts =
+            prometheus::Opts::new("endpoint_durations_seconds", "How long took which phase?");
+        let endpoint_durations =
+            Box::new(prometheus::GaugeVec::new(opts, &["name", "phase"]).unwrap());
+        registry.register(endpoint_durations.clone()).unwrap();
+
+        Self {
+            endpoints_health: endpoints_health,
+            endpoint_durations: endpoint_durations,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct MonitoringConfiguration {
     /// if the URI-host matches the DNS-configuration record, then the host part of the URI is only being used for the SNI (server name indication) sent in the HTTP request, the actual IP is being taken from the DNS configuration (because its value would be used for the DNS entry and we want to monitor the actual reachability of the endpoint DNS values)
     pub uri: hyper::Uri,
@@ -57,10 +81,14 @@ pub struct Endpoint {
     pub weight: u8,
     /// if enabled, the endpoint will be removed after the specified time, if a higher priority endpoint is available
     pub sticky_duration: Option<std::time::Duration>,
+    metrics: std::sync::Arc<EndpointMetrics>,
 }
 
 impl Endpoint {
-    pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+    pub fn from_yaml(
+        yaml: &yaml_rust2::Yaml,
+        metrics: std::sync::Arc<EndpointMetrics>,
+    ) -> Result<Self, String> {
         let dns = match DnsConfiguration::from_yaml(&yaml["dns"]) {
             Ok(v) => v,
             Err(e) => return Err(format!("Failed to parse DNS configuration: {:?}", e)),
@@ -96,6 +124,7 @@ impl Endpoint {
             monitoring,
             weight,
             sticky_duration,
+            metrics,
         })
     }
 
@@ -146,15 +175,24 @@ impl Endpoint {
             first_run = false;
 
             // always resolve DNS-records values, if changed trigger update
-            let new_dns_values = match self.dns.resolve().await {
-                Ok(v) => v,
-                Err(e) => {
-                    warn!(
-                        "Failed to resolve DNS values for endpoint {}: {:?}",
-                        self, e
-                    );
-                    continue;
-                }
+            let new_dns_values = {
+                let start = std::time::Instant::now();
+                let res = match self.dns.resolve().await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!(
+                            "Failed to resolve DNS values for endpoint {}: {:?}",
+                            self, e
+                        );
+                        continue;
+                    }
+                };
+                let duration = start.elapsed().as_secs_f64();
+                self.metrics
+                    .endpoint_durations
+                    .with_label_values(&[&self.dns.record, "dns"])
+                    .set(duration);
+                res
             };
             if last_dns_values != new_dns_values {
                 change_tx
@@ -195,14 +233,23 @@ impl Endpoint {
                     .body(http_body_util::Empty::<bytes::Bytes>::new())
                     .unwrap();
 
-                let response = match client.perform(request).await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!("Failed to perform request for endpoint {}: {:?}", self, e);
-                        self._change_health(&self_arc, &change_tx, false).await;
-                        confidence = 0;
-                        continue;
-                    }
+                let response = {
+                    let start = std::time::Instant::now();
+                    let res = match client.perform(request).await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            warn!("Failed to perform request for endpoint {}: {:?}", self, e);
+                            self._change_health(&self_arc, &change_tx, false).await;
+                            confidence = 0;
+                            continue;
+                        }
+                    };
+                    let duration = start.elapsed().as_secs_f64();
+                    self.metrics
+                        .endpoint_durations
+                        .with_label_values(&[&self.dns.record, "request"])
+                        .set(duration);
+                    res
                 };
 
                 if monitoring.marker.is_some() {
@@ -232,6 +279,10 @@ impl Endpoint {
         }
         self.healthy
             .store(healthy, std::sync::atomic::Ordering::Relaxed);
+        self.metrics
+            .endpoints_health
+            .with_label_values(&[&self.dns.record])
+            .set(healthy as i64);
         change_tx
             .send(ChangeReason::EndpointHealthChanged {
                 endpoint: self_arc.clone(),

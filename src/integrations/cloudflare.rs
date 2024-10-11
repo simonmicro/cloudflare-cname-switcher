@@ -54,11 +54,15 @@ impl CloudflareDnsValues {
 pub struct CloudflareConfiguration {
     zone_id: String,
     token: String,
-    _status_cache: Option<CloudflareDnsValues>,
+    status_cache: Option<CloudflareDnsValues>,
+    gauge_update_duration: Option<Box<prometheus::Gauge>>,
 }
 
 impl CloudflareConfiguration {
-    pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+    pub fn from_yaml(
+        yaml: &yaml_rust2::Yaml,
+        registry: &prometheus::Registry,
+    ) -> Result<Self, String> {
         let zone_id = yaml["zone_id"]
             .as_str()
             .ok_or("zone_id is not a string")?
@@ -67,10 +71,19 @@ impl CloudflareConfiguration {
             .as_str()
             .ok_or("token is not a string")?
             .to_string();
+        let gauge_update_duration = Box::new(
+            prometheus::Gauge::new(
+                "cloudflare_update_seconds",
+                "Duration of last cloudflare update",
+            )
+            .unwrap(),
+        );
+        registry.register(gauge_update_duration.clone()).unwrap();
         Ok(Self {
             zone_id,
             token,
-            _status_cache: None,
+            status_cache: None,
+            gauge_update_duration: Some(gauge_update_duration),
         })
     }
 
@@ -338,7 +351,8 @@ impl CloudflareConfiguration {
         Self {
             zone_id,
             token,
-            _status_cache: None,
+            status_cache: None,
+            gauge_update_duration: None,
         }
     }
 
@@ -375,7 +389,7 @@ impl CloudflareConfiguration {
         // did the state change?
         let full_cleanup;
         let just_update;
-        if let Some(cache) = &self._status_cache {
+        if let Some(cache) = &self.status_cache {
             if cache == &state {
                 debug!("No change requested for {}", record);
                 return Ok(());
@@ -443,7 +457,7 @@ impl CloudflareConfiguration {
             }
         }
 
-        self._status_cache = Some(state);
+        self.status_cache = Some(state);
         Ok(())
     }
 
@@ -453,15 +467,21 @@ impl CloudflareConfiguration {
         selected_endpoints: std::collections::HashSet<EndpointArc>,
         ttl: u16,
     ) -> Result<(), CloudflareUpdateError> {
-        match self._update(record, selected_endpoints, ttl).await {
+        let start = std::time::Instant::now();
+        let res = match self._update(record, selected_endpoints, ttl).await {
             Ok(v) => Ok(v),
             Err(e) => {
                 // on error also reset the cache
                 debug!("Resetting cache due to error: {:?}", e);
-                self._status_cache = None;
+                self.status_cache = None;
                 Err(e)
             }
+        };
+        let duration = start.elapsed().as_secs_f64();
+        if let Some(gauge) = &self.gauge_update_duration {
+            gauge.set(duration);
         }
+        res
     }
 }
 

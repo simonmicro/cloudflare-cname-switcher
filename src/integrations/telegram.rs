@@ -5,11 +5,16 @@ use log::{debug, warn};
 pub struct TelegramConfiguration {
     send_client: HyperHttpClient,
     chat_id: i64,
-    _queue: std::sync::Mutex<std::collections::LinkedList<(String, std::time::SystemTime)>>,
+    queue: std::sync::Mutex<std::collections::LinkedList<(String, std::time::SystemTime)>>,
+    gauge_send_duration: Option<Box<prometheus::Gauge>>,
+    gauge_queue_amount: Option<Box<prometheus::IntGauge>>,
 }
 
 impl TelegramConfiguration {
-    pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+    pub fn from_yaml(
+        yaml: &yaml_rust2::Yaml,
+        registry: &prometheus::Registry,
+    ) -> Result<Self, String> {
         let token = yaml["token"]
             .as_str()
             .ok_or("token is not a string")?
@@ -17,10 +22,30 @@ impl TelegramConfiguration {
         let chat_id = yaml["chat_id"]
             .as_i64()
             .ok_or("chat_id is not an integer")?;
-        Ok(Self::new(token, chat_id))
+        let gauge_send_duration = Box::new(
+            prometheus::Gauge::new("telegram_send_seconds", "Duration of last message send")
+                .unwrap(),
+        );
+        registry.register(gauge_send_duration.clone()).unwrap();
+        let gauge_queue_amount = Box::new(
+            prometheus::IntGauge::new("telegram_queue_amount", "Amount of messages in the queue")
+                .unwrap(),
+        );
+        registry.register(gauge_queue_amount.clone()).unwrap();
+        Ok(Self::new(
+            token,
+            chat_id,
+            Some(gauge_send_duration),
+            Some(gauge_queue_amount),
+        ))
     }
 
-    pub fn new(token: String, chat_id: i64) -> Self {
+    pub fn new(
+        token: String,
+        chat_id: i64,
+        gauge_send_duration: Option<Box<prometheus::Gauge>>,
+        gauge_queue_amount: Option<Box<prometheus::IntGauge>>,
+    ) -> Self {
         Self {
             send_client: HyperHttpClient::new(
                 format!("https://api.telegram.org/bot{}/sendMessage", token)
@@ -29,7 +54,9 @@ impl TelegramConfiguration {
                 None,
             ),
             chat_id,
-            _queue: std::sync::Mutex::new(std::collections::LinkedList::new()),
+            queue: std::sync::Mutex::new(std::collections::LinkedList::new()),
+            gauge_send_duration,
+            gauge_queue_amount,
         }
     }
 
@@ -49,15 +76,18 @@ impl TelegramConfiguration {
 
     pub async fn queue_and_send(&self, message: &str) {
         // add message to buffer
-        self._queue
-            .lock()
-            .unwrap()
-            .push_back((message.to_string(), std::time::SystemTime::now()));
+        {
+            let mut queue = self.queue.lock().unwrap();
+            queue.push_back((message.to_string(), std::time::SystemTime::now()));
+            if let Some(gauge) = &self.gauge_queue_amount {
+                gauge.set(queue.len() as i64);
+            }
+        }
         self.send().await;
     }
 
     pub async fn send(&self) {
-        let mut queue = self._queue.lock().unwrap();
+        let mut queue = self.queue.lock().unwrap();
         if queue.len() == 0 {
             return;
         }
@@ -107,7 +137,16 @@ impl TelegramConfiguration {
                 .unwrap();
 
             // send the message
-            match self.send_client.perform(request).await {
+            let result = {
+                let start = std::time::Instant::now();
+                let res = self.send_client.perform(request).await;
+                let duration = start.elapsed().as_secs_f64();
+                if let Some(gauge) = &self.gauge_send_duration {
+                    gauge.set(duration);
+                }
+                res
+            };
+            match result {
                 Ok(_) => {
                     debug!("Sent message to {}: {:?}", self.chat_id, content);
                 }
@@ -119,10 +158,13 @@ impl TelegramConfiguration {
 
             // pop the message
             queue.pop_front();
+            if let Some(gauge) = &self.gauge_queue_amount {
+                gauge.set(queue.len() as i64);
+            }
         }
     }
 
     pub fn has_pending(&self) -> bool {
-        self._queue.lock().unwrap().len() > 0
+        self.queue.lock().unwrap().len() > 0
     }
 }

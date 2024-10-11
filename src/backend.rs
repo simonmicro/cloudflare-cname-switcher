@@ -1,4 +1,4 @@
-use crate::endpoints::{ChangeReason, Endpoint, EndpointArc};
+use crate::endpoints::{ChangeReason, Endpoint, EndpointArc, EndpointMetrics};
 use crate::integrations::{cloudflare::CloudflareConfiguration, telegram::TelegramConfiguration};
 use log::{debug, error, info, warn};
 use yaml_rust2;
@@ -7,12 +7,15 @@ pub struct Backend {
     /// FQDN
     pub record: String,
     pub endpoints: std::collections::HashSet<EndpointArc>,
+    gauge_endpoint_selected: Box<prometheus::IntGaugeVec>,
     cloudflare: CloudflareConfiguration,
     telegram: Option<TelegramConfiguration>,
+    registry: std::sync::Arc<prometheus::Registry>,
 }
 
 impl Backend {
     pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+        let registry = prometheus::Registry::new();
         let record = match yaml["record"].as_str() {
             Some(v) => v.to_string(),
             None => {
@@ -21,9 +24,11 @@ impl Backend {
         };
         let endpoints = match yaml["endpoints"].as_vec() {
             Some(v) => {
+                let metrics = std::sync::Arc::new(EndpointMetrics::new(&registry));
+                // parse endpoints
                 let mut endpoints = std::collections::HashSet::new();
                 for endpoint in v {
-                    let endpoint = match Endpoint::from_yaml(&endpoint) {
+                    let endpoint = match Endpoint::from_yaml(&endpoint, metrics.clone()) {
                         Ok(v) => v,
                         Err(e) => {
                             return Err(format!("Failed to parse endpoint: {}", e));
@@ -37,7 +42,16 @@ impl Backend {
                 return Err("Missing endpoints".to_string());
             }
         };
-        let cloudflare = match CloudflareConfiguration::from_yaml(&yaml["cloudflare"]) {
+        let gauge_endpoint_selected = {
+            let gauge_endpoints_health_opts =
+                prometheus::Opts::new("endpoint_selected", "Is the backend using this endpoint?");
+            let gauge_endpoints_health = Box::new(
+                prometheus::IntGaugeVec::new(gauge_endpoints_health_opts, &["name"]).unwrap(),
+            );
+            registry.register(gauge_endpoints_health.clone()).unwrap();
+            gauge_endpoints_health
+        };
+        let cloudflare = match CloudflareConfiguration::from_yaml(&yaml["cloudflare"], &registry) {
             Ok(v) => v,
             Err(e) => {
                 return Err(format!("Failed to parse cloudflare: {}", e));
@@ -45,7 +59,7 @@ impl Backend {
         };
         let telegram = match yaml["telegram"].is_null() {
             true => None,
-            false => match TelegramConfiguration::from_yaml(&yaml["telegram"]) {
+            false => match TelegramConfiguration::from_yaml(&yaml["telegram"], &registry) {
                 Ok(v) => Some(v),
                 Err(e) => {
                     return Err(format!("Failed to parse telegram: {}", e));
@@ -55,8 +69,10 @@ impl Backend {
         Ok(Self {
             record,
             endpoints,
+            gauge_endpoint_selected,
             cloudflare,
             telegram,
+            registry: registry.into(),
         })
     }
 
@@ -102,9 +118,9 @@ impl Backend {
                 endpoint.monitor(endpoint.clone(), change_tx).await;
             });
         }
-        let server_task = Self::server();
+        let server_task = Self::server(self.registry.clone());
         tokio::pin!(server_task);
-        type EndpointWithTimestampAndPrimary = (EndpointArc, std::time::SystemTime, bool);
+        type EndpointWithTimestampAndPrimary = (EndpointArc, std::time::Instant, bool);
         let mut last_active_endpoints =
             std::collections::HashSet::<EndpointWithTimestampAndPrimary>::new();
 
@@ -116,22 +132,22 @@ impl Backend {
                     continue; // primary endpoints stickiness is not relevant
                 }
                 if let Some(sticky_duration) = endpoint.sticky_duration.as_ref() {
-                    let now = std::time::SystemTime::now();
+                    let now = std::time::Instant::now();
                     // is the sticky duration already expired?
-                    if now.duration_since(*timestamp).unwrap() <= *sticky_duration {
+                    if now.duration_since(*timestamp) <= *sticky_duration {
                         if let Some(scheduled_wakeup_duration) =
                             due_to_sticky_expiring_wakeup_in.as_ref()
                         {
                             // if already set, take the minimum of the two
                             due_to_sticky_expiring_wakeup_in = Some(std::cmp::min(
                                 *scheduled_wakeup_duration,
-                                *sticky_duration - now.duration_since(*timestamp).unwrap()
+                                *sticky_duration - now.duration_since(*timestamp)
                                     + std::time::Duration::from_secs(1),
                             ));
                         } else {
                             // if not set, set it
                             due_to_sticky_expiring_wakeup_in = Some(
-                                *sticky_duration - now.duration_since(*timestamp).unwrap()
+                                *sticky_duration - now.duration_since(*timestamp)
                                     + std::time::Duration::from_secs(1),
                             );
                         }
@@ -206,11 +222,10 @@ impl Backend {
                     if let Some((current_endpoint, _, _)) = found_endpoint.as_ref() {
                         if endpoint.weight < (*current_endpoint).weight {
                             found_endpoint =
-                                Some((endpoint.clone(), std::time::SystemTime::now(), true));
+                                Some((endpoint.clone(), std::time::Instant::now(), true));
                         }
                     } else {
-                        found_endpoint =
-                            Some((endpoint.clone(), std::time::SystemTime::now(), true));
+                        found_endpoint = Some((endpoint.clone(), std::time::Instant::now(), true));
                     }
                 }
                 new_prioritized_endpoint = match found_endpoint {
@@ -248,13 +263,13 @@ impl Backend {
                     // → re-add them to the list of selected endpoints with current timestamp
                     new_active_endpoints.insert((
                         endpoint.clone(),
-                        std::time::SystemTime::now(),
+                        std::time::Instant::now(),
                         false,
                     ));
                     debug!("Selected sticky, primary endpoint: {:?}", endpoint);
                 } else
                 // for each non-primary check if their sticky duration expired, if so ignore
-                if *timestamp + *sticky_duration > std::time::SystemTime::now() {
+                if *timestamp + *sticky_duration > std::time::Instant::now() {
                     // → re-add them to the list of selected endpoints with old timestamp
                     new_active_endpoints.insert((endpoint.clone(), *timestamp, false));
                     debug!("Selected sticky, non-primary endpoint: {:?}", endpoint);
@@ -312,6 +327,14 @@ impl Backend {
                 }
             }
 
+            // update gauge to reflect selected endpoints
+            for endpoint in &self.endpoints {
+                let selected = new_active_endpoints.iter().any(|(e, _, _)| *e == *endpoint);
+                self.gauge_endpoint_selected
+                    .with_label_values(&[&endpoint.dns.record])
+                    .set(if selected { 1 } else { 0 });
+            }
+
             // update last_active_endpoints
             last_active_endpoints = new_active_endpoints;
         }
@@ -327,7 +350,7 @@ impl Backend {
         // → 1 get unhealthy, 2 will be elected as only primary, 1 get back healthy, 1 will be elected as primary with 2 as stick until expire, 1 get unhealthy, 2 will be elected as only primary (not sticky with itself...)
     }
 
-    async fn server() -> Result<(), String> {
+    async fn server(registry: std::sync::Arc<prometheus::Registry>) -> Result<(), String> {
         let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
         let listener = tokio::net::TcpListener::bind(addr)
             .await
@@ -338,10 +361,20 @@ impl Backend {
             let (stream, _) = listener.accept().await.map_err(|e| e.to_string())?;
             let io = hyper_util::rt::TokioIo::new(stream);
 
-            // Spawn a tokio task to serve multiple connections concurrently
+            // for each client spawn a new task
+            let registry = registry.clone();
             tokio::task::spawn(async move {
+                // note that one client with one connection, may send multiple requests -> service_fn must be FN instead of FnOnce
                 if let Err(err) = hyper::server::conn::http1::Builder::new()
-                    .serve_connection(io, hyper::service::service_fn(Backend::serve_client))
+                    .serve_connection(
+                        io,
+                        hyper::service::service_fn(
+                            move |req: hyper::Request<hyper::body::Incoming>| {
+                                let registry = registry.clone();
+                                async move { Self::serve_client(req, registry).await }
+                            },
+                        ),
+                    )
                     .await
                 {
                     warn!("Error serving connection: {:?}", err);
@@ -352,9 +385,11 @@ impl Backend {
 
     async fn serve_client(
         req: hyper::Request<hyper::body::Incoming>,
+        registry: std::sync::Arc<prometheus::Registry>,
     ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>, std::convert::Infallible> {
         match (req.method(), req.uri().path()) {
-            (&hyper::http::Method::GET, "/healthz") => Self::serve_healthz(req).await,
+            (&hyper::http::Method::GET, "/healthz") => Self::serve_healthz().await,
+            (&hyper::http::Method::GET, "/metrics") => Self::serve_metrics(registry).await,
             _ => Ok(hyper::Response::builder()
                 .status(hyper::http::StatusCode::NOT_FOUND)
                 .body(http_body_util::Full::new(bytes::Bytes::from("Not Found")))
@@ -363,11 +398,23 @@ impl Backend {
     }
 
     async fn serve_healthz(
-        _: hyper::Request<hyper::body::Incoming>,
     ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>, std::convert::Infallible> {
         // nothing to check, if the server is up, we are healthy
         Ok(hyper::Response::new(http_body_util::Full::new(
             bytes::Bytes::from("OK"),
+        )))
+    }
+
+    async fn serve_metrics(
+        registry: std::sync::Arc<prometheus::Registry>,
+    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>, std::convert::Infallible> {
+        // create the buffer
+        let encoder = prometheus::TextEncoder::new();
+        let metric_families = registry.gather();
+        let response_str = encoder.encode_to_string(&metric_families).unwrap();
+        // create the response
+        Ok(hyper::Response::new(http_body_util::Full::new(
+            bytes::Bytes::from(response_str),
         )))
     }
 }
