@@ -1,5 +1,6 @@
 use crate::endpoints::{ChangeReason, Endpoint, EndpointArc, EndpointMetrics};
 use crate::integrations::{cloudflare::CloudflareConfiguration, telegram::TelegramConfiguration};
+use itertools::Itertools;
 use log::{debug, error, info, warn};
 use yaml_rust2;
 
@@ -314,7 +315,13 @@ impl Ingress {
                         TelegramConfiguration::escape(&new_prioritized_endpoint.0.name),
                         TelegramConfiguration::escape(&".")
                     );
+                    // sort all endpoints by weight
+                    let mut sorted_endpoints = std::collections::HashMap::<u8, &EndpointArc>::new();
                     for endpoint in &endpoints {
+                        sorted_endpoints.insert(endpoint.weight, endpoint);
+                    }
+                    // add all endpoints to the message
+                    for (_, endpoint) in sorted_endpoints.iter().sorted_by_key(|(k, _)| *k) {
                         message.push_str(&format!("\n  {}", endpoint.to_telegram_string()));
                     }
                     telegram.queue_and_send(&message).await;
