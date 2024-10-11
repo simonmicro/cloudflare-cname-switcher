@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use log::{debug, info, warn};
 
 type SharedRegistry =
@@ -15,7 +17,8 @@ impl HttpServer {
     }
 
     pub async fn run(&self) -> Result<(), String> {
-        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
+        let addr = std::env::var("BIND_ADDRESS").unwrap_or_else(|_| "[::]:3000".to_string());
+        let addr = std::net::SocketAddr::from_str(&addr).map_err(|e| e.to_string())?;
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .map_err(|e| e.to_string())?;

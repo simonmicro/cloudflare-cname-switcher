@@ -45,7 +45,7 @@ Go ahead, build the program and run it!
 cargo run --release
 ```
 
-Then copy the `config.sample.yaml` to `config.yaml` and adjust the settings to your needs.
+Then copy the `config.sample.yaml` to `config.yaml` and adjust the settings to your needs. You may also use the environment variable `BIND_ADDRESS` to change the listening host and port of the HTTP server. This was implemented in an environment variable to allow for a more flexible configuration in a containerized environment.
 
 ## Run it!
 You may either start this directly on your machine, use the provided `Dockerfile` to build a container or use a pre-built container from one of the supported registires (see `.gitlab-ci.yml`).

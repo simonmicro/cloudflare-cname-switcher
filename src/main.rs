@@ -113,8 +113,8 @@ async fn main() {
                 // on file change, reload configuration
                 // just let the loop continue
             }
-            _ = &mut server_task => {
-                error!("Server task terminated unexpectedly?!");
+            e = &mut server_task => {
+                error!("Server task terminated unexpectedly: {:?}", e);
                 return;
             }
             _ = tokio::signal::ctrl_c() => {
