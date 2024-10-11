@@ -356,6 +356,7 @@ impl Ingress {
 
         loop {
             let (stream, _) = listener.accept().await.map_err(|e| e.to_string())?;
+            debug!("New connection from: {:?}", stream.peer_addr());
             let io = hyper_util::rt::TokioIo::new(stream);
 
             // for each client spawn a new task
