@@ -1,5 +1,5 @@
-use crate::integrations::dns::DnsConfiguration;
 use crate::integrations::http::HyperHttpClient;
+use crate::integrations::{dns::DnsConfiguration, telegram::TelegramConfiguration};
 use log::{debug, error, info, warn};
 
 #[derive(Debug)]
@@ -298,6 +298,21 @@ impl Endpoint {
             .endpoint_durations
             .with_label_values(&[&self.name, "dns"])
             .set(duration);
+        res
+    }
+
+    pub fn to_telegram_string(&self) -> String {
+        let mut res = match self.healthy.load(std::sync::atomic::Ordering::Relaxed) {
+            true => format!("✅ `{}`", TelegramConfiguration::escape(&self.name)),
+            false => format!("❌ `{}`", TelegramConfiguration::escape(&self.name)),
+        };
+        if let Some(monitoring) = self.monitoring.as_ref() {
+            res += &TelegramConfiguration::escape(&format!(
+                " (every {}s, confidence of {})",
+                monitoring.interval.as_secs(),
+                monitoring.confidence
+            ));
+        }
         res
     }
 }

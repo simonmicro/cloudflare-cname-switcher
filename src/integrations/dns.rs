@@ -52,7 +52,7 @@ impl DnsConfiguration {
         sock.connect(format!("{}:{}", self.resolver, 53))
             .await
             .map_err(|e| DnsError::ConnectError(e))?;
-        debug!("resolving \"{}\" using {}", self.record, self.resolver);
+        debug!("Resolving \"{}\" using {}", self.record, self.resolver);
 
         // create message for ipv4-records
         {
@@ -139,7 +139,7 @@ impl DnsConfiguration {
             }
         }
 
-        debug!("resolved \"{}\" to {:?}", self.record, returnme);
+        debug!("Resolved \"{}\" to {:?}", self.record, returnme);
         Ok(returnme)
     }
 }

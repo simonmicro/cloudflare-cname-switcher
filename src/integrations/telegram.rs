@@ -91,6 +91,9 @@ impl TelegramConfiguration {
         if queue.len() == 0 {
             return;
         }
+        if queue.len() > 128 {
+            panic!("Telegram queue is too long... Something is really wrong!");
+        }
 
         // while buffer not empty, try to send the message
         while queue.len() > 0 {
@@ -109,6 +112,7 @@ impl TelegramConfiguration {
                     content, timestamp_str
                 );
             }
+            debug!("Sending a message to {}: {}", self.chat_id, content);
 
             // build the request JSON
             let data = serde_json::Value::Object(serde_json::Map::from_iter([
@@ -146,14 +150,9 @@ impl TelegramConfiguration {
                 }
                 res
             };
-            match result {
-                Ok(_) => {
-                    debug!("Sent message to {}: {:?}", self.chat_id, content);
-                }
-                Err(e) => {
-                    warn!("Failed to send message: {:?}", e);
-                    return;
-                }
+            if let Err(e) = result {
+                warn!("Failed to send message: {:?}", e);
+                return;
             };
 
             // pop the message

@@ -309,12 +309,15 @@ impl Ingress {
                     && last_prioritized_endpoint.as_ref().unwrap().0 != new_prioritized_endpoint.0
                 {
                     debug!("Sending telegram notification due to primary endpoint change");
-                    telegram
-                        .queue_and_send(&format!(
-                            "Primary endpoint changed to {}",
-                            TelegramConfiguration::escape(&new_prioritized_endpoint.0.name)
-                        ))
-                        .await;
+                    let mut message = format!(
+                        "Ingress changed to *{}*{}",
+                        TelegramConfiguration::escape(&new_prioritized_endpoint.0.name),
+                        TelegramConfiguration::escape(&".")
+                    );
+                    for endpoint in &endpoints {
+                        message.push_str(&format!("\n  {}", endpoint.to_telegram_string()));
+                    }
+                    telegram.queue_and_send(&message).await;
                 }
             }
 
