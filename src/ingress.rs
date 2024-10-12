@@ -279,36 +279,38 @@ impl Ingress {
             }
 
             // update cloudflare
-            let mut ok = false;
-            let endpoints: std::collections::HashSet<EndpointArc> = new_active_endpoints
-                .iter()
-                .map(|(e, _, _)| e.clone())
-                .collect();
-            let ttl = new_active_endpoints
-                .iter()
-                .map(|(e, _, _)| e.dns.ttl)
-                .min()
-                .unwrap();
-            for _ in 0..3 {
-                let result = self
-                    .cloudflare
-                    .update(&self.record, endpoints.clone(), ttl)
-                    .await;
-                if result.is_ok() {
-                    ok = true;
-                    break;
-                }
-            }
-            if !ok {
-                error!("Failed multiple times to update Cloudflare, skipping update");
-                continue;
-            }
-
             {
-                info!(
-                    "Updated ingress to new endpoints: {:?}",
-                    endpoints.iter().map(|e| &e.name).collect::<Vec<&String>>()
-                );
+                let mut ok = false;
+                let endpoints: std::collections::HashSet<EndpointArc> = new_active_endpoints
+                    .iter()
+                    .map(|(e, _, _)| e.clone())
+                    .collect();
+                let ttl = new_active_endpoints
+                    .iter()
+                    .map(|(e, _, _)| e.dns.ttl)
+                    .min()
+                    .unwrap();
+                for _ in 0..3 {
+                    let result = self
+                        .cloudflare
+                        .update(&self.record, endpoints.clone(), ttl)
+                        .await;
+                    if result.is_ok() {
+                        ok = true;
+                        break;
+                    }
+                }
+                if !ok {
+                    error!("Failed multiple times to update Cloudflare, skipping update");
+                    continue;
+                }
+
+                {
+                    info!(
+                        "Updated ingress to new endpoints: {:?}",
+                        endpoints.iter().map(|e| &e.name).collect::<Vec<&String>>()
+                    );
+                }
             }
 
             if let Some(telegram) = self.telegram.as_ref() {
@@ -324,7 +326,7 @@ impl Ingress {
                     );
                     // sort all endpoints by weight
                     let mut sorted_endpoints = std::collections::HashMap::<u8, &EndpointArc>::new();
-                    for endpoint in &endpoints {
+                    for endpoint in &self.endpoints {
                         sorted_endpoints.insert(endpoint.weight, endpoint);
                     }
                     // add all endpoints to the message
