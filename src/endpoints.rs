@@ -36,6 +36,8 @@ pub struct MonitoringConfiguration {
     pub confidence: u8,
     /// how long to wait for http requests
     pub timeout: std::time::Duration,
+    /// will be set to the last reason why the endpoint was marked as unhealthy
+    last_problem: std::sync::Mutex<Option<String>>,
 }
 
 impl MonitoringConfiguration {
@@ -74,6 +76,7 @@ impl MonitoringConfiguration {
             marker,
             confidence,
             timeout,
+            last_problem: std::sync::Mutex::new(None),
         })
     }
 }
@@ -214,7 +217,11 @@ impl Endpoint {
             // no values, no monitoring
             if last_dns_values.len() == 0 {
                 warn!("No DNS values for endpoint \"{}\"", self);
-                self.change_health(&self_arc, Some(&change_tx), false).await;
+                monitoring
+                    .last_problem
+                    .lock()
+                    .unwrap()
+                    .replace("no DNS values".to_string());
                 confidence = 0;
                 continue;
             }
@@ -254,7 +261,11 @@ impl Endpoint {
                     Ok(v) => v,
                     Err(e) => {
                         warn!("Failed to perform request for endpoint {}: {:?}", self, e);
-                        self.change_health(&self_arc, Some(&change_tx), false).await;
+                        monitoring
+                            .last_problem
+                            .lock()
+                            .unwrap()
+                            .replace(format!("HTTP error: {:?}", e));
                         confidence = 0;
                         continue;
                     }
@@ -316,7 +327,8 @@ impl Endpoint {
     }
 
     pub fn to_telegram_string(&self) -> String {
-        let mut res = match self.healthy.load(std::sync::atomic::Ordering::Relaxed) {
+        let healthy = self.healthy.load(std::sync::atomic::Ordering::Relaxed);
+        let mut res = match healthy {
             true => format!("✅ `{}`", TelegramConfiguration::escape(&self.name)),
             false => format!("❌ `{}`", TelegramConfiguration::escape(&self.name)),
         };
@@ -330,6 +342,11 @@ impl Endpoint {
                     ", confidence of {}",
                     monitoring.confidence
                 ));
+            }
+            if !healthy {
+                if let Some(detail) = monitoring.last_problem.lock().unwrap().as_ref() {
+                    res += &TelegramConfiguration::escape(&format!(", {}", detail));
+                }
             }
             res += &TelegramConfiguration::escape(&format!(")",));
         }
