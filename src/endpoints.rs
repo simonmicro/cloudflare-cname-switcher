@@ -325,7 +325,7 @@ impl Endpoint {
                 " (every {}s",
                 monitoring.interval.as_secs(),
             ));
-            if monitoring.confidence > 0 {
+            if monitoring.confidence > 1 {
                 res += &TelegramConfiguration::escape(&format!(
                     ", confidence of {}",
                     monitoring.confidence
