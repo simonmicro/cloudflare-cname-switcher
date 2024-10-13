@@ -97,7 +97,7 @@ impl CloudflareConfiguration {
         )
         .parse::<hyper::Uri>()
         .unwrap();
-        let client = HyperHttpClient::new(uri, None);
+        let client = HyperHttpClient::new(uri, std::time::Duration::from_secs(10), None);
         let request = client
             .builder()
             .header(
@@ -179,7 +179,7 @@ impl CloudflareConfiguration {
         )
         .parse::<hyper::Uri>()
         .unwrap();
-        let client = HyperHttpClient::new(uri, None);
+        let client = HyperHttpClient::new(uri, std::time::Duration::from_secs(10), None);
         let request = client
             .builder()
             .method(hyper::Method::POST)
@@ -272,7 +272,7 @@ impl CloudflareConfiguration {
         )
         .parse::<hyper::Uri>()
         .unwrap();
-        let client = HyperHttpClient::new(uri, None);
+        let client = HyperHttpClient::new(uri, std::time::Duration::from_secs(10), None);
         let request = client
             .builder()
             .method(hyper::Method::PATCH)
@@ -313,7 +313,7 @@ impl CloudflareConfiguration {
         )
         .parse::<hyper::Uri>()
         .unwrap();
-        let client = HyperHttpClient::new(uri, None);
+        let client = HyperHttpClient::new(uri, std::time::Duration::from_secs(10), None);
         let request = client
             .builder()
             .method(hyper::Method::DELETE)

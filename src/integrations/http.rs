@@ -30,13 +30,17 @@ pub struct HyperHttpClient {
 }
 
 impl HyperHttpClient {
-    pub fn new(uri: hyper::Uri, address_override: Option<std::net::IpAddr>) -> Self {
+    pub fn new(
+        uri: hyper::Uri,
+        timeout: std::time::Duration,
+        address_override: Option<std::net::IpAddr>,
+    ) -> Self {
         assert!(uri.scheme_str().is_some(), "URI has no scheme");
         assert!(uri.host().is_some(), "URI has no host");
         Self {
             uri,
             address_override,
-            timeout: std::time::Duration::from_secs(10),
+            timeout,
         }
     }
 
@@ -192,7 +196,7 @@ mod tests {
     #[tokio::test]
     async fn test_http_client() {
         let uri = "http://example.com".parse::<hyper::Uri>().unwrap();
-        let client = HyperHttpClient::new(uri, None);
+        let client = HyperHttpClient::new(uri, std::time::Duration::from_secs(5), None);
         let request = client
             .builder()
             .body(http_body_util::Empty::<bytes::Bytes>::new())
@@ -204,7 +208,7 @@ mod tests {
     #[tokio::test]
     async fn test_https_client() {
         let uri = "https://example.com".parse::<hyper::Uri>().unwrap();
-        let client = HyperHttpClient::new(uri, None);
+        let client = HyperHttpClient::new(uri, std::time::Duration::from_secs(5), None);
         let request = client
             .builder()
             .body(http_body_util::Empty::<bytes::Bytes>::new())

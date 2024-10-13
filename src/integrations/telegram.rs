@@ -51,6 +51,7 @@ impl TelegramConfiguration {
                 format!("https://api.telegram.org/bot{}/sendMessage", token)
                     .parse()
                     .unwrap(),
+                std::time::Duration::from_secs(10),
                 None,
             ),
             chat_id,

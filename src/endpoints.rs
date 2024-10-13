@@ -34,6 +34,8 @@ pub struct MonitoringConfiguration {
     pub marker: Option<String>,
     /// amount of consecutive successful requests required to mark the endpoint as healthy
     pub confidence: u8,
+    /// how long to wait for http requests
+    pub timeout: std::time::Duration,
 }
 
 impl MonitoringConfiguration {
@@ -62,11 +64,16 @@ impl MonitoringConfiguration {
             }
             None => return Err("Missing 'confidence' key".to_string()),
         };
+        let timeout = match yaml["timeout"].as_i64() {
+            Some(v) => std::time::Duration::from_secs(v as u64),
+            None => std::time::Duration::from_secs(5),
+        };
         Ok(Self {
             uri,
             interval,
             marker,
             confidence,
+            timeout,
         })
     }
 }
@@ -225,7 +232,8 @@ impl Endpoint {
             };
 
             // then check the endpoint
-            let client = HyperHttpClient::new(monitoring.uri.clone(), address_override);
+            let client =
+                HyperHttpClient::new(monitoring.uri.clone(), monitoring.timeout, address_override);
             {
                 let request = client
                     .builder()

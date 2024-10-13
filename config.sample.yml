@@ -8,6 +8,7 @@ endpoints: # a list of endpoints to monitor / fallback to
       uri: "http://service1.example.com/healthz" # must respond with 200, maybe with SSL/TLS
       interval: 30 # in seconds
       confidence: 3 # amount of successful checks needed, until we switch (back)
+      timeout: null # in seconds, defaults to 5
       marker: null # string required to be present in the response body
     alias: null # optional, set to an unique string to use this as the endpoint name in notifications / metrics
     sticky_duration: null # in seconds, how long to keep this endpoint selected, even if not primary anymore
