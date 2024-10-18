@@ -1,4 +1,4 @@
-use log::debug;
+use log::{debug, warn};
 
 #[derive(Debug)]
 pub enum DnsError {
@@ -21,6 +21,8 @@ pub struct DnsConfiguration {
     pub ttl: u16,
     /// the DNS record will be resolved by this resolver
     pub resolver: String,
+    /// how often to retry the DNS resolution
+    pub retry: u8,
 }
 
 impl DnsConfiguration {
@@ -29,20 +31,38 @@ impl DnsConfiguration {
             .as_str()
             .ok_or("record is not a string")?
             .to_string();
-        let ttl = yaml["ttl"].as_i64().ok_or("ttl is not an integer")? as u16;
+        let ttl = match yaml["ttl"].as_i64() {
+            Some(t) => {
+                if t < 0 || t > std::u16::MAX as i64 {
+                    return Err("ttl is out of bounds".to_string());
+                }
+                t as u16
+            }
+            None => 0,
+        };
         let resolver = yaml["resolver"]
             .as_str()
             .ok_or("resolver is not a string")?
             .to_string();
+        let retry = match yaml["retry"].as_i64() {
+            Some(r) => {
+                if r < 0 || r > std::u8::MAX as i64 {
+                    return Err("retry is out of bounds".to_string());
+                }
+                r as u8
+            }
+            None => 1,
+        };
         Ok(Self {
             record,
             ttl,
             resolver,
+            retry,
         })
     }
 
     /// send two queries against the resolver (since not multiple at once are always supported -> https://stackoverflow.com/a/4083071)
-    pub async fn resolve(&self) -> Result<std::collections::HashSet<std::net::IpAddr>, DnsError> {
+    async fn _resolve(&self) -> Result<std::collections::HashSet<std::net::IpAddr>, DnsError> {
         let mut returnme = std::collections::HashSet::<std::net::IpAddr>::new();
 
         // connect using UDP
@@ -142,6 +162,25 @@ impl DnsConfiguration {
         debug!("Resolved \"{}\" to {:?}", self.record, returnme);
         Ok(returnme)
     }
+
+    pub async fn resolve(&self) -> Result<std::collections::HashSet<std::net::IpAddr>, DnsError> {
+        let mut attempt = 0;
+        return loop {
+            attempt += 1;
+            let last_attempt = attempt > self.retry;
+            let result = self._resolve().await;
+            break match result {
+                Ok(r) => Ok(r),
+                Err(e) => {
+                    if !last_attempt {
+                        warn!("Attempt {} failed: {:?}", attempt, e);
+                        continue;
+                    }
+                    Err(e)
+                }
+            };
+        };
+    }
 }
 
 #[cfg(test)]
@@ -154,6 +193,7 @@ mod tests {
             record: "example.com".to_string(),
             ttl: 0,
             resolver: "1.1.1.1".to_string(),
+            retry: 1,
         };
         let result = config.resolve().await.unwrap();
         assert!(result.len() > 0);

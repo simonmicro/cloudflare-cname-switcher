@@ -4,12 +4,14 @@ endpoints: # a list of endpoints to monitor / fallback to
       record: "_service1.example.com"
       ttl: 60 # this is the TTL of the record(s), if this endpoint is selected
       resolver: 1.1.1.1
+      retry: null # defaults to 0
     monitoring:
       uri: "http://service1.example.com/healthz" # must respond with 200, maybe with SSL/TLS
       interval: 30 # in seconds
       confidence: 3 # amount of successful checks needed, until we switch (back)
       timeout: null # in seconds, defaults to 5
       marker: null # string required to be present in the response body
+      retry: null # defaults to 0
     alias: null # optional, set to an unique string to use this as the endpoint name in notifications / metrics
     sticky_duration: null # in seconds, how long to keep this endpoint selected, even if not primary anymore
     weight: 10 # lower is higher priority
@@ -17,6 +19,7 @@ endpoints: # a list of endpoints to monitor / fallback to
       record: "_service2.example.com"
       ttl: 300 # recommended: let clients stick longer to the secondary endpoint during and after a failover
       resolver: 1.1.1.1
+      retry: null
     monitoring: null
     alias: null
     sticky_duration: null

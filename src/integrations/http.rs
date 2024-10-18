@@ -1,5 +1,5 @@
 use http_body_util::BodyExt;
-use log::error;
+use log::{error, warn};
 
 #[derive(Debug)]
 pub enum HyperHttpClientPhase {
@@ -25,22 +25,25 @@ pub enum HyperHttpClientError {
 /// a http client with more fine-control and automatic https support
 pub struct HyperHttpClient {
     uri: hyper::Uri,
-    address_override: Option<std::net::IpAddr>,
     timeout: std::time::Duration,
+    retry: u8,
+    address_override: Option<std::net::IpAddr>,
 }
 
 impl HyperHttpClient {
     pub fn new(
         uri: hyper::Uri,
         timeout: std::time::Duration,
+        retry: u8,
         address_override: Option<std::net::IpAddr>,
     ) -> Self {
         assert!(uri.scheme_str().is_some(), "URI has no scheme");
         assert!(uri.host().is_some(), "URI has no host");
         Self {
             uri,
-            address_override,
+            retry,
             timeout,
+            address_override,
         }
     }
 
@@ -66,12 +69,12 @@ impl HyperHttpClient {
     }
 
     /// after https://hyper.rs/guides/1/client/basic/, with tokio-rustls documentation
-    pub async fn perform<T: hyper::body::Body>(
+    async fn _perform<T: hyper::body::Body>(
         &self,
-        request: hyper::Request<T>,
+        request: &hyper::Request<T>,
     ) -> Result<String, HyperHttpClientError>
     where
-        T: Send + 'static,
+        T: Send + Clone + 'static,
         <T as hyper::body::Body>::Data: Send,
         <T as hyper::body::Body>::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
@@ -124,10 +127,11 @@ impl HyperHttpClient {
                 });
 
                 // send request (regardless of ssl or not the same code)
-                let response = tokio::time::timeout(self.timeout, sender.send_request(request))
-                    .await
-                    .map_err(|e| HyperHttpClientError::Timeout(HyperHttpClientPhase::Send, e))?
-                    .map_err(|e| HyperHttpClientError::SendError(e))?;
+                let response =
+                    tokio::time::timeout(self.timeout, sender.send_request(request.clone()))
+                        .await
+                        .map_err(|e| HyperHttpClientError::Timeout(HyperHttpClientPhase::Send, e))?
+                        .map_err(|e| HyperHttpClientError::SendError(e))?;
                 if response.status() != hyper::StatusCode::OK {
                     return Err(HyperHttpClientError::ReceiveStatus(response));
                 }
@@ -170,10 +174,11 @@ impl HyperHttpClient {
                 });
 
                 // send request (regardless of ssl or not the same code)
-                let response = tokio::time::timeout(self.timeout, sender.send_request(request))
-                    .await
-                    .map_err(|e| HyperHttpClientError::Timeout(HyperHttpClientPhase::Send, e))?
-                    .map_err(|e| HyperHttpClientError::SendError(e))?;
+                let response =
+                    tokio::time::timeout(self.timeout, sender.send_request(request.clone()))
+                        .await
+                        .map_err(|e| HyperHttpClientError::Timeout(HyperHttpClientPhase::Send, e))?
+                        .map_err(|e| HyperHttpClientError::SendError(e))?;
                 if response.status() != hyper::StatusCode::OK {
                     return Err(HyperHttpClientError::ReceiveStatus(response));
                 }
@@ -187,6 +192,33 @@ impl HyperHttpClient {
         };
         Ok(result)
     }
+
+    pub async fn perform<T: hyper::body::Body>(
+        &self,
+        request: hyper::Request<T>,
+    ) -> Result<String, HyperHttpClientError>
+    where
+        T: Send + Clone + 'static,
+        <T as hyper::body::Body>::Data: Send,
+        <T as hyper::body::Body>::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        let mut attempt = 0;
+        return loop {
+            attempt += 1;
+            let last_attempt = attempt > self.retry;
+            let result = self._perform(&request).await;
+            break match result {
+                Ok(r) => Ok(r),
+                Err(e) => {
+                    if !last_attempt {
+                        warn!("Attempt {} failed: {:?}", attempt, e);
+                        continue;
+                    }
+                    Err(e)
+                }
+            };
+        };
+    }
 }
 
 #[cfg(test)]
@@ -196,7 +228,7 @@ mod tests {
     #[tokio::test]
     async fn test_http_client() {
         let uri = "http://example.com".parse::<hyper::Uri>().unwrap();
-        let client = HyperHttpClient::new(uri, std::time::Duration::from_secs(5), None);
+        let client = HyperHttpClient::new(uri, std::time::Duration::from_secs(5), 0, None);
         let request = client
             .builder()
             .body(http_body_util::Empty::<bytes::Bytes>::new())
@@ -208,7 +240,7 @@ mod tests {
     #[tokio::test]
     async fn test_https_client() {
         let uri = "https://example.com".parse::<hyper::Uri>().unwrap();
-        let client = HyperHttpClient::new(uri, std::time::Duration::from_secs(5), None);
+        let client = HyperHttpClient::new(uri, std::time::Duration::from_secs(5), 0, None);
         let request = client
             .builder()
             .body(http_body_util::Empty::<bytes::Bytes>::new())

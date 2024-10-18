@@ -52,6 +52,7 @@ impl TelegramConfiguration {
                     .parse()
                     .unwrap(),
                 std::time::Duration::from_secs(10),
+                0,
                 None,
             ),
             chat_id,

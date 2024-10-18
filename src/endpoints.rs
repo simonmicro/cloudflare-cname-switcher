@@ -36,6 +36,8 @@ pub struct MonitoringConfiguration {
     pub confidence: u8,
     /// how long to wait for http requests
     pub timeout: std::time::Duration,
+    /// how often to retry the HTTP request
+    pub retry: u8,
     /// will be set to the last reason why the endpoint was marked as unhealthy
     last_problem: std::sync::Mutex<Option<String>>,
 }
@@ -59,8 +61,8 @@ impl MonitoringConfiguration {
         };
         let confidence = match yaml["confidence"].as_i64() {
             Some(v) => {
-                if v < 1 || v > 255 {
-                    return Err("Confidence must be between 1 and 255".to_string());
+                if v < 1 || v > std::u8::MAX as i64 {
+                    return Err("Confidence is out of bounds".to_string());
                 }
                 v as u8
             }
@@ -70,12 +72,22 @@ impl MonitoringConfiguration {
             Some(v) => std::time::Duration::from_secs(v as u64),
             None => std::time::Duration::from_secs(5),
         };
+        let retry = match yaml["retry"].as_i64() {
+            Some(v) => {
+                if v < 0 || v > std::u8::MAX as i64 {
+                    return Err("Retry is out of bounds".to_string());
+                }
+                v as u8
+            }
+            None => 0,
+        };
         Ok(Self {
             uri,
             interval,
             marker,
             confidence,
             timeout,
+            retry,
             last_problem: std::sync::Mutex::new(None),
         })
     }
@@ -239,8 +251,12 @@ impl Endpoint {
             };
 
             // then check the endpoint
-            let client =
-                HyperHttpClient::new(monitoring.uri.clone(), monitoring.timeout, address_override);
+            let client = HyperHttpClient::new(
+                monitoring.uri.clone(),
+                monitoring.timeout,
+                monitoring.retry,
+                address_override,
+            );
             {
                 let request = client
                     .builder()
