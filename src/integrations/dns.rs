@@ -13,6 +13,15 @@ pub enum DnsError {
     ReceivedUnexpectedType(std::io::Error),
 }
 
+impl std::fmt::Display for DnsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            DnsError::ReceiveTimeout(_) => write!(f, "Timeout during Receive"),
+            other => write!(f, "{}", other),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DnsConfiguration {
     /// FQDN, used for resolving the endpoints A/AAAA entries for stickyness

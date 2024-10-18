@@ -22,6 +22,15 @@ pub enum HyperHttpClientError {
     Timeout(HyperHttpClientPhase, tokio::time::error::Elapsed),
 }
 
+impl std::fmt::Display for HyperHttpClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            HyperHttpClientError::Timeout(p, _) => write!(f, "Timeout during {:?}", p),
+            other => write!(f, "{}", other),
+        }
+    }
+}
+
 /// a http client with more fine-control and automatic https support
 pub struct HyperHttpClient {
     uri: hyper::Uri,
