@@ -281,7 +281,7 @@ impl Endpoint {
                             .last_problem
                             .lock()
                             .unwrap()
-                            .replace(format!("HTTP error: {:?}", e));
+                            .replace(format!("HTTP error: {}", e));
                         confidence = 0;
                         continue;
                     }
@@ -361,7 +361,7 @@ impl Endpoint {
             }
             if !healthy {
                 if let Some(detail) = monitoring.last_problem.lock().unwrap().as_ref() {
-                    res += &TelegramConfiguration::escape(&format!(", {}", detail));
+                    res += &TelegramConfiguration::escape(&detail);
                 }
             }
             res += &TelegramConfiguration::escape(&format!(")",));
