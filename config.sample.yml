@@ -28,5 +28,6 @@ cloudflare:
   token: token # Cloudflare account -> API-Token -> create a new one with the Zone.DNS permission
   zone_id: 123456abcdef # available in the Cloudflare dashboard
 telegram: # optional, set to null to disable
+  initial_silence: null # optional, in seconds, to silence notifications after startup while monitoring is stabilizing
   token: token # set the bot token
   chat_id: 123456978 # set the chat/channel/group id

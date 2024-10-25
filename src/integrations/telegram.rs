@@ -8,6 +8,7 @@ pub struct TelegramConfiguration {
     queue: std::sync::Mutex<std::collections::LinkedList<(String, std::time::SystemTime)>>,
     gauge_send_duration: Option<Box<prometheus::Gauge>>,
     gauge_queue_amount: Option<Box<prometheus::IntGauge>>,
+    silence_until: Option<std::time::SystemTime>,
 }
 
 impl TelegramConfiguration {
@@ -15,6 +16,15 @@ impl TelegramConfiguration {
         yaml: &yaml_rust2::Yaml,
         registry: &prometheus::Registry,
     ) -> Result<Self, String> {
+        let silence_until = match yaml["silence_until"].as_i64() {
+            Some(x) => {
+                if x < 0 {
+                    return Err("silence_until must be a positive integer".to_string());
+                }
+                Some(std::time::SystemTime::now() + std::time::Duration::from_secs(x as u64))
+            }
+            None => None,
+        };
         let token = yaml["token"]
             .as_str()
             .ok_or("token is not a string")?
@@ -35,6 +45,7 @@ impl TelegramConfiguration {
         Ok(Self::new(
             token,
             chat_id,
+            silence_until,
             Some(gauge_send_duration),
             Some(gauge_queue_amount),
         ))
@@ -43,6 +54,7 @@ impl TelegramConfiguration {
     pub fn new(
         token: String,
         chat_id: i64,
+        silence_until: Option<std::time::SystemTime>,
         gauge_send_duration: Option<Box<prometheus::Gauge>>,
         gauge_queue_amount: Option<Box<prometheus::IntGauge>>,
     ) -> Self {
@@ -59,6 +71,7 @@ impl TelegramConfiguration {
             queue: std::sync::Mutex::new(std::collections::LinkedList::new()),
             gauge_send_duration,
             gauge_queue_amount,
+            silence_until,
         }
     }
 
@@ -77,6 +90,12 @@ impl TelegramConfiguration {
     }
 
     pub async fn queue_and_send(&self, message: &str) {
+        // check if we are in silence mode
+        if let Some(silence_until) = &self.silence_until {
+            if *silence_until > std::time::SystemTime::now() {
+                return;
+            }
+        }
         // add message to buffer
         {
             let mut queue = self.queue.lock().unwrap();
