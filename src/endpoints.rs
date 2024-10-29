@@ -189,7 +189,7 @@ impl Endpoint {
 
         let mut confidence = 0;
         let mut first_run = true;
-        loop {
+        'main_loop: loop {
             // apply current confidence to health status
             if confidence >= monitoring.confidence {
                 self.change_health(&self_arc, Some(&change_tx), true).await;
@@ -205,15 +205,35 @@ impl Endpoint {
             first_run = false;
 
             // always resolve DNS-records values, if changed trigger update
-            let new_dns_values = match self.resolve_dns().await {
-                Ok(v) => v,
-                Err(e) => {
-                    warn!(
-                        "Failed to resolve DNS values for endpoint {}: {:?}",
-                        self, e
-                    );
-                    continue;
+            let mut attempt = 0;
+            let new_dns_values = loop {
+                if attempt > self.dns.retry {
+                    confidence = 0;
+                    continue 'main_loop; // give up this iteration
                 }
+                attempt += 1;
+                break match self.resolve_dns().await {
+                    Ok(v) => {
+                        if v.len() == 0 {
+                            warn!("No DNS values for endpoint \"{}\"", self);
+                            monitoring
+                                .last_problem
+                                .lock()
+                                .unwrap()
+                                .replace("no DNS values".to_string());
+                            continue; // retry
+                        }
+                        v // success
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to resolve DNS values for endpoint \"{}\": {:?}",
+                            self, e
+                        );
+                        // we consider this a provider issue, so we will not mark the endpoint as unhealthy
+                        continue 'main_loop; // give up now, because the dns-integration already retried the DNS resolution
+                    }
+                };
             };
             if last_dns_values != new_dns_values {
                 change_tx
@@ -225,18 +245,6 @@ impl Endpoint {
 
             // update last_dns_values
             last_dns_values = new_dns_values;
-
-            // no values, no monitoring
-            if last_dns_values.len() == 0 {
-                warn!("No DNS values for endpoint \"{}\"", self);
-                monitoring
-                    .last_problem
-                    .lock()
-                    .unwrap()
-                    .replace("no DNS values".to_string());
-                confidence = 0;
-                continue;
-            }
 
             // determine socket address: if uri.host==dns.record, then use ip from before; otherwise ask OS
             let address_override = match self.dns.record == monitoring.uri.host().unwrap() {
