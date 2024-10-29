@@ -16,10 +16,10 @@ impl TelegramConfiguration {
         yaml: &yaml_rust2::Yaml,
         registry: &prometheus::Registry,
     ) -> Result<Self, String> {
-        let silence_until = match yaml["silence_until"].as_i64() {
+        let silence_until = match yaml["initial_silence"].as_i64() {
             Some(x) => {
                 if x < 0 {
-                    return Err("silence_until must be a positive integer".to_string());
+                    return Err("initial_silence must be a positive integer".to_string());
                 }
                 Some(std::time::SystemTime::now() + std::time::Duration::from_secs(x as u64))
             }
