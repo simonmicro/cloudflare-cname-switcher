@@ -315,8 +315,8 @@ impl Ingress {
 
             if let Some(telegram) = self.telegram.as_ref() {
                 // queue telegram notification IF primary endpoint changed (not the address, but the record-names of the selected endpoints)
-                if last_prioritized_endpoint.is_some()
-                    && last_prioritized_endpoint.as_ref().unwrap().0 != new_prioritized_endpoint.0
+                if last_prioritized_endpoint.is_none()
+                    || last_prioritized_endpoint.as_ref().unwrap().0 != new_prioritized_endpoint.0
                 {
                     debug!("Sending telegram notification due to primary endpoint change");
                     let mut message = format!(
