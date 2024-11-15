@@ -100,8 +100,10 @@ impl HttpServer {
         };
         let response_str = encoder.encode_to_string(&metric_families).unwrap();
         // create the response
-        Ok(hyper::Response::new(http_body_util::Full::new(
-            bytes::Bytes::from(response_str),
-        )))
+        let mut res =
+            hyper::Response::new(http_body_util::Full::new(bytes::Bytes::from(response_str)));
+        res.headers_mut()
+            .insert("Content-Type", "text/plain; version=0.0.4".parse().unwrap());
+        Ok(res)
     }
 }
