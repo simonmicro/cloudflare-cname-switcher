@@ -3,6 +3,10 @@ name = "cloudflare-cname-switcher"
 version = "2.1.7"
 edition = "2021"
 
+[profile.release]
+strip = true
+lto = true
+
 [dependencies]
 yaml-rust2 = "0.10.0"
 hyper = { version = "1.6.0", features = ["client", "http1", "server"] }
