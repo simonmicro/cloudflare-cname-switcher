@@ -1,6 +1,6 @@
 [package]
 name = "cloudflare-cname-switcher"
-version = "2.1.8"
+version = "2.1.9"
 edition = "2021"
 
 [profile.release]
@@ -20,7 +20,7 @@ log = "0.4.26"
 hyper-util = { version = "0.1.10", features = ["tokio"] }
 http-body-util = "0.1.2"
 bytes = "1.10.0"
-tokio-rustls = "0.26.1"
+tokio-rustls = "0.26.2"
 webpki-roots = "0.26.8"
 rustls-pki-types = "1.11.0"
 serde = "1.0.218"
