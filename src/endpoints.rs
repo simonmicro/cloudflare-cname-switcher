@@ -277,7 +277,7 @@ impl Endpoint {
                     let duration = start.elapsed().as_secs_f64();
                     self.metrics
                         .endpoint_durations
-                        .with_label_values(&[&self.name, "request"])
+                        .with_label_values(&[self.name.as_str(), "request"])
                         .set(duration);
                     res
                 };
@@ -345,7 +345,7 @@ impl Endpoint {
         let duration = start.elapsed().as_secs_f64();
         self.metrics
             .endpoint_durations
-            .with_label_values(&[&self.name, "dns"])
+            .with_label_values(&[self.name.as_str(), "dns"])
             .set(duration);
         res
     }
