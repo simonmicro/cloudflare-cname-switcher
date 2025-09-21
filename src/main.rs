@@ -99,15 +99,15 @@ async fn main() {
         let mut hup_listener =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup()).unwrap();
         tokio::select! {
-            _ = ingress.run() => {
+            _ = Box::pin(ingress.run()) => {
                 error!("Ingress-run task terminated unexpectedly?!");
                 std::process::exit(2);
             },
-            _ = hup_listener.recv() => {
+            _ = Box::pin(hup_listener.recv()) => {
                 // on SIGHUP, reload configuration
                 // just let the loop continue
             }
-            _ = watcher_rx.recv() => {
+            _ = Box::pin(watcher_rx.recv()) => {
                 // on file change, reload configuration
                 // just let the loop continue
             }

@@ -270,7 +270,7 @@ dependencies = [
 
 [[package]]
 name = "cloudflare-cname-switcher"
-version = "2.2.4"
+version = "2.2.5"
 dependencies = [
  "bytes",
  "chrono",
