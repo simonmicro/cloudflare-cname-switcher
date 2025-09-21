@@ -110,10 +110,10 @@ impl CloudflareConfiguration {
         let response = client
             .perform(request)
             .await
-            .map_err(|e| CloudflareApiError::Http(e))?;
+            .map_err(CloudflareApiError::Http)?;
 
         let json: serde_json::Value =
-            serde_json::from_str(&response).map_err(|e| CloudflareApiError::JsonParseError(e))?;
+            serde_json::from_str(&response).map_err(CloudflareApiError::JsonParseError)?;
         let res_array = json
             .as_object()
             .ok_or(CloudflareApiError::SchemaParseError)?
@@ -195,10 +195,10 @@ impl CloudflareConfiguration {
         let response = client
             .perform(request)
             .await
-            .map_err(|e| CloudflareApiError::Http(e))?;
+            .map_err(CloudflareApiError::Http)?;
 
         let json: serde_json::Value =
-            serde_json::from_str(&response).map_err(|e| CloudflareApiError::JsonParseError(e))?;
+            serde_json::from_str(&response).map_err(CloudflareApiError::JsonParseError)?;
         let id = json
             .as_object()
             .ok_or(CloudflareApiError::SchemaParseError)?
@@ -288,10 +288,10 @@ impl CloudflareConfiguration {
         let response = client
             .perform(request)
             .await
-            .map_err(|e| CloudflareApiError::Http(e))?;
+            .map_err(CloudflareApiError::Http)?;
 
         let json: serde_json::Value =
-            serde_json::from_str(&response).map_err(|e| CloudflareApiError::JsonParseError(e))?;
+            serde_json::from_str(&response).map_err(CloudflareApiError::JsonParseError)?;
         let id = json
             .as_object()
             .ok_or(CloudflareApiError::SchemaParseError)?
@@ -327,10 +327,10 @@ impl CloudflareConfiguration {
         let response = client
             .perform(request)
             .await
-            .map_err(|e| CloudflareApiError::Http(e))?;
+            .map_err(CloudflareApiError::Http)?;
 
         let json: serde_json::Value =
-            serde_json::from_str(&response).map_err(|e| CloudflareApiError::JsonParseError(e))?;
+            serde_json::from_str(&response).map_err(CloudflareApiError::JsonParseError)?;
         let id = json
             .as_object()
             .ok_or(CloudflareApiError::SchemaParseError)?
@@ -363,7 +363,7 @@ impl CloudflareConfiguration {
         ttl: u16,
     ) -> Result<(), CloudflareUpdateError> {
         assert!(
-            selected_endpoints.len() > 0,
+            !selected_endpoints.is_empty(),
             "You must provide at least one endpoint"
         );
         // calculate the new state
@@ -378,7 +378,7 @@ impl CloudflareConfiguration {
                 let resolved = endpoint
                     .resolve_dns()
                     .await
-                    .map_err(|e| CloudflareUpdateError::DnsError(e))?;
+                    .map_err(CloudflareUpdateError::DnsError)?;
                 ips.extend(resolved);
             }
             state = CloudflareDnsValues::CNameWithSticky(ips);
@@ -414,11 +414,11 @@ impl CloudflareConfiguration {
             let record_ids = self
                 .name_to_record_ids(record)
                 .await
-                .map_err(|e| CloudflareUpdateError::ApiError(e))?;
+                .map_err(CloudflareUpdateError::ApiError)?;
             for record_id in record_ids {
                 self.delete_record(&record_id)
                     .await
-                    .map_err(|e| CloudflareUpdateError::ApiError(e))?;
+                    .map_err(CloudflareUpdateError::ApiError)?;
             }
         }
 
@@ -428,29 +428,29 @@ impl CloudflareConfiguration {
                     let record_ids = self
                         .name_to_record_ids(record)
                         .await
-                        .map_err(|e| CloudflareUpdateError::ApiError(e))?;
+                        .map_err(CloudflareUpdateError::ApiError)?;
                     if record_ids.len() != 1 {
                         // something must have changed, while this does not recognize a single A-record, it will trigger on multiple (non-CNAME) records
                         return Err(CloudflareUpdateError::Conflict);
                     }
                     self.update_record_cname(record, record_ids.front().unwrap(), cname, &ttl)
                         .await
-                        .map_err(|e| CloudflareUpdateError::ApiError(e))?;
+                        .map_err(CloudflareUpdateError::ApiError)?;
                 }
                 _ => unreachable!(),
             }
         } else {
             match &state {
                 CloudflareDnsValues::CName(cname) => {
-                    self.create_record_cname(record, &cname, &ttl)
+                    self.create_record_cname(record, cname, &ttl)
                         .await
-                        .map_err(|e| CloudflareUpdateError::ApiError(e))?;
+                        .map_err(CloudflareUpdateError::ApiError)?;
                 }
                 CloudflareDnsValues::CNameWithSticky(ips) => {
                     for ip in ips {
-                        self.create_record_a_or_aaaa(record, &ip, &ttl)
+                        self.create_record_a_or_aaaa(record, ip, &ttl)
                             .await
-                            .map_err(|e| CloudflareUpdateError::ApiError(e))?;
+                            .map_err(CloudflareUpdateError::ApiError)?;
                     }
                 }
             }

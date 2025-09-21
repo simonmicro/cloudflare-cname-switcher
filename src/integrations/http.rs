@@ -61,7 +61,7 @@ impl HyperHttpClient {
         // create host header with port if necessary
         let mut host = self.uri.host().unwrap().to_string();
         if self.uri.port_u16().is_some() {
-            host.push_str(":");
+            host.push(':');
             host.push_str(&self.uri.port_u16().unwrap().to_string());
         }
         let location = match self.uri.path_and_query() {
@@ -102,11 +102,10 @@ impl HyperHttpClient {
             .uri
             .port()
             .map(|p| p.as_u16())
-            .or(Some(match enable_ssl {
+            .unwrap_or(match enable_ssl {
                 true => 443,
                 false => 80,
-            }))
-            .unwrap();
+            });
 
         // connect basic tcp stream
         let stream = tokio::time::timeout(
@@ -115,7 +114,7 @@ impl HyperHttpClient {
         )
         .await
         .map_err(|e| HyperHttpClientError::Timeout(HyperHttpClientPhase::Connect, e))?
-        .map_err(|e| HyperHttpClientError::ConnectError(e))?;
+        .map_err(HyperHttpClientError::ConnectError)?;
 
         let result = match enable_ssl {
             false => {
@@ -127,7 +126,7 @@ impl HyperHttpClient {
                         .map_err(|e| {
                             HyperHttpClientError::Timeout(HyperHttpClientPhase::Handshake, e)
                         })?
-                        .map_err(|e| HyperHttpClientError::HandshakeError(e))?;
+                        .map_err(HyperHttpClientError::HandshakeError)?;
                 tokio::spawn(async move {
                     // this task will terminate if the sender is dropped
                     if let Err(err) = conn.await {
@@ -140,16 +139,16 @@ impl HyperHttpClient {
                     tokio::time::timeout(self.timeout, sender.send_request(request.clone()))
                         .await
                         .map_err(|e| HyperHttpClientError::Timeout(HyperHttpClientPhase::Send, e))?
-                        .map_err(|e| HyperHttpClientError::SendError(e))?;
+                        .map_err(HyperHttpClientError::SendError)?;
                 if response.status() != hyper::StatusCode::OK {
                     return Err(HyperHttpClientError::ReceiveStatus(response));
                 }
                 let body = tokio::time::timeout(self.timeout, response.collect())
                     .await
                     .map_err(|e| HyperHttpClientError::Timeout(HyperHttpClientPhase::Receive, e))?
-                    .map_err(|e| HyperHttpClientError::ReceiveError(e))?;
+                    .map_err(HyperHttpClientError::ReceiveError)?;
                 String::from_utf8(body.to_bytes().to_vec())
-                    .map_err(|e| HyperHttpClientError::DecodeBodyError(e))?
+                    .map_err(HyperHttpClientError::DecodeBodyError)?
             }
             true => {
                 // initialize ssl state machine
@@ -164,7 +163,7 @@ impl HyperHttpClient {
                     tokio::time::timeout(self.timeout, connector.connect(dnsname, stream))
                         .await
                         .map_err(|e| HyperHttpClientError::Timeout(HyperHttpClientPhase::Tls, e))?
-                        .map_err(|e| HyperHttpClientError::TlsError(e))?;
+                        .map_err(HyperHttpClientError::TlsError)?;
 
                 // prepare sender and start task to handle communication
                 let io = hyper_util::rt::tokio::TokioIo::new(tls_stream);
@@ -174,7 +173,7 @@ impl HyperHttpClient {
                         .map_err(|e| {
                             HyperHttpClientError::Timeout(HyperHttpClientPhase::Handshake, e)
                         })?
-                        .map_err(|e| HyperHttpClientError::HandshakeError(e))?;
+                        .map_err(HyperHttpClientError::HandshakeError)?;
                 tokio::spawn(async move {
                     // this task will terminate if the sender is dropped
                     if let Err(err) = conn.await {
@@ -187,16 +186,16 @@ impl HyperHttpClient {
                     tokio::time::timeout(self.timeout, sender.send_request(request.clone()))
                         .await
                         .map_err(|e| HyperHttpClientError::Timeout(HyperHttpClientPhase::Send, e))?
-                        .map_err(|e| HyperHttpClientError::SendError(e))?;
+                        .map_err(HyperHttpClientError::SendError)?;
                 if response.status() != hyper::StatusCode::OK {
                     return Err(HyperHttpClientError::ReceiveStatus(response));
                 }
                 let body = tokio::time::timeout(self.timeout, response.collect())
                     .await
                     .map_err(|e| HyperHttpClientError::Timeout(HyperHttpClientPhase::Receive, e))?
-                    .map_err(|e| HyperHttpClientError::ReceiveError(e))?;
+                    .map_err(HyperHttpClientError::ReceiveError)?;
                 String::from_utf8(body.to_bytes().to_vec())
-                    .map_err(|e| HyperHttpClientError::DecodeBodyError(e))?
+                    .map_err(HyperHttpClientError::DecodeBodyError)?
             }
         };
         Ok(result)
@@ -212,7 +211,7 @@ impl HyperHttpClient {
         <T as hyper::body::Body>::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
         let mut attempt = 0;
-        return loop {
+        loop {
             attempt += 1;
             let last_attempt = attempt > self.retry;
             let result = self._perform(&request).await;
@@ -226,7 +225,7 @@ impl HyperHttpClient {
                     Err(e)
                 }
             };
-        };
+        }
     }
 }
 

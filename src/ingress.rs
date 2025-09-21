@@ -29,7 +29,7 @@ impl Ingress {
                 // parse endpoints
                 let mut endpoints = std::collections::HashSet::new();
                 for endpoint in v {
-                    let endpoint = match Endpoint::from_yaml(&endpoint, metrics.clone()) {
+                    let endpoint = match Endpoint::from_yaml(endpoint, metrics.clone()) {
                         Ok(v) => v,
                         Err(e) => {
                             return Err(format!("Failed to parse endpoint: {}", e));
@@ -78,13 +78,13 @@ impl Ingress {
     }
 
     pub fn from_config(yaml_str: &str) -> Result<Self, String> {
-        let yaml = match yaml_rust2::YamlLoader::load_from_str(&yaml_str) {
+        let yaml = match yaml_rust2::YamlLoader::load_from_str(yaml_str) {
             Ok(v) => v,
             Err(e) => {
                 return Err(format!("{}", e));
             }
         };
-        if yaml.len() < 1 {
+        if yaml.is_empty() {
             return Err("Empty configuration file found".to_string());
         }
         let yaml = &yaml[0];
@@ -189,7 +189,7 @@ impl Ingress {
                 }
                 // IF telegram has pending messages, sleep 30 seconds and then wake up
                 _ = match self.telegram.as_ref() {
-                    Some(ref telegram) => {
+                    Some(telegram) => {
                         if telegram.has_pending() {
                             tokio::time::sleep(std::time::Duration::from_secs(30))
                         } else {
@@ -222,7 +222,7 @@ impl Ingress {
                 let mut found_endpoint: Option<EndpointWithTimestampAndPrimary> = None;
                 for endpoint in &healthy_endpoints {
                     if let Some((current_endpoint, _, _)) = found_endpoint.as_ref() {
-                        if endpoint.weight < (*current_endpoint).weight {
+                        if endpoint.weight < current_endpoint.weight {
                             found_endpoint =
                                 Some((endpoint.clone(), std::time::Instant::now(), true));
                         }
@@ -322,7 +322,7 @@ impl Ingress {
                     let mut message = format!(
                         "Ingress changed to *{}*{}",
                         TelegramConfiguration::escape(&new_prioritized_endpoint.0.name),
-                        TelegramConfiguration::escape(&".")
+                        TelegramConfiguration::escape(".")
                     );
                     // sort all endpoints by weight
                     let mut sorted_endpoints = std::collections::HashMap::<u8, &EndpointArc>::new();

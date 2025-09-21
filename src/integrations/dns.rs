@@ -42,7 +42,7 @@ impl DnsConfiguration {
             .to_string();
         let ttl = match yaml["ttl"].as_i64() {
             Some(t) => {
-                if t < 0 || t > std::u16::MAX as i64 {
+                if t < 0 || t > u16::MAX as i64 {
                     return Err("ttl is out of bounds".to_string());
                 }
                 t as u16
@@ -55,7 +55,7 @@ impl DnsConfiguration {
             .to_string();
         let retry = match yaml["retry"].as_i64() {
             Some(r) => {
-                if r < 0 || r > std::u8::MAX as i64 {
+                if r < 0 || r > u8::MAX as i64 {
                     return Err("retry is out of bounds".to_string());
                 }
                 r as u8
@@ -77,10 +77,10 @@ impl DnsConfiguration {
         // connect using UDP
         let sock = tokio::net::UdpSocket::bind("0.0.0.0:0")
             .await
-            .map_err(|e| DnsError::BindError(e))?;
+            .map_err(DnsError::BindError)?;
         sock.connect(format!("{}:{}", self.resolver, 53))
             .await
-            .map_err(|e| DnsError::ConnectError(e))?;
+            .map_err(DnsError::ConnectError)?;
         debug!("Resolving \"{}\" using {}", self.record, self.resolver);
 
         // create message for ipv4-records
@@ -91,13 +91,13 @@ impl DnsConfiguration {
                 rustdns::types::Type::A,
                 rustdns::types::Class::Internet,
             );
-            let request_bytes = request.to_vec().map_err(|e| DnsError::SerializeError(e))?;
+            let request_bytes = request.to_vec().map_err(DnsError::SerializeError)?;
 
             // send the request and...
             let len = sock
                 .send(&request_bytes)
                 .await
-                .map_err(|e| DnsError::SendError(e))?;
+                .map_err(DnsError::SendError)?;
             if len != request_bytes.len() {
                 return Err(DnsError::SendLengthTooShort);
             }
@@ -106,21 +106,18 @@ impl DnsConfiguration {
             let mut resp = [0; 4096];
             let len = tokio::time::timeout(std::time::Duration::new(10, 0), sock.recv(&mut resp))
                 .await
-                .map_err(|e| DnsError::ReceiveTimeout(e))?
-                .map_err(|e| DnsError::ReceiveError(e))?;
+                .map_err(DnsError::ReceiveTimeout)?
+                .map_err(DnsError::ReceiveError)?;
             let answer = rustdns::types::Message::from_slice(&resp[0..len])
-                .map_err(|e| DnsError::ReceivedUnexpectedType(e))?;
+                .map_err(DnsError::ReceivedUnexpectedType)?;
             if answer.rcode != rustdns::types::Rcode::NoError {
                 return Err(DnsError::ReceiveParseError(answer.rcode));
             }
 
             // parse the response
             for dns_record in answer.answers {
-                match dns_record.resource {
-                    rustdns::types::Resource::A(a) => {
-                        returnme.insert(std::net::IpAddr::V4(a));
-                    }
-                    _ => {}
+                if let rustdns::types::Resource::A(a) = dns_record.resource {
+                    returnme.insert(std::net::IpAddr::V4(a));
                 }
             }
         }
@@ -133,13 +130,13 @@ impl DnsConfiguration {
                 rustdns::types::Type::AAAA,
                 rustdns::types::Class::Internet,
             );
-            let request_bytes = request.to_vec().map_err(|e| DnsError::SerializeError(e))?;
+            let request_bytes = request.to_vec().map_err(DnsError::SerializeError)?;
 
             // send the request and...
             let len = sock
                 .send(&request_bytes)
                 .await
-                .map_err(|e| DnsError::SendError(e))?;
+                .map_err(DnsError::SendError)?;
             if len != request_bytes.len() {
                 return Err(DnsError::SendLengthTooShort);
             }
@@ -148,10 +145,10 @@ impl DnsConfiguration {
             let mut resp = [0; 4096];
             let len = tokio::time::timeout(std::time::Duration::new(10, 0), sock.recv(&mut resp))
                 .await
-                .map_err(|e| DnsError::ReceiveTimeout(e))?
-                .map_err(|e| DnsError::ReceiveError(e))?;
+                .map_err(DnsError::ReceiveTimeout)?
+                .map_err(DnsError::ReceiveError)?;
             let answer = rustdns::types::Message::from_slice(&resp[0..len])
-                .map_err(|e| DnsError::ReceivedUnexpectedType(e))?;
+                .map_err(DnsError::ReceivedUnexpectedType)?;
             if answer.rcode != rustdns::types::Rcode::NoError {
                 return Err(DnsError::ReceiveParseError(answer.rcode));
             }
@@ -159,11 +156,8 @@ impl DnsConfiguration {
             // parse the response
             let mut returnme = std::collections::HashSet::<std::net::IpAddr>::new();
             for dns_record in answer.answers {
-                match dns_record.resource {
-                    rustdns::types::Resource::AAAA(aaaa) => {
-                        returnme.insert(std::net::IpAddr::V6(aaaa));
-                    }
-                    _ => {}
+                if let rustdns::types::Resource::AAAA(aaaa) = dns_record.resource {
+                    returnme.insert(std::net::IpAddr::V6(aaaa));
                 }
             }
         }
@@ -174,7 +168,7 @@ impl DnsConfiguration {
 
     pub async fn resolve(&self) -> Result<std::collections::HashSet<std::net::IpAddr>, DnsError> {
         let mut attempt = 0;
-        return loop {
+        loop {
             attempt += 1;
             let last_attempt = attempt > self.retry;
             let result = self._resolve().await;
@@ -188,7 +182,7 @@ impl DnsConfiguration {
                     Err(e)
                 }
             };
-        };
+        }
     }
 }
 

@@ -109,7 +109,7 @@ impl TelegramConfiguration {
 
     pub async fn send(&self) {
         let mut queue = self.queue.lock().unwrap();
-        if queue.len() == 0 {
+        if queue.is_empty() {
             return;
         }
         if queue.len() > 128 {
@@ -117,7 +117,7 @@ impl TelegramConfiguration {
         }
 
         // while buffer not empty, try to send the message
-        while queue.len() > 0 {
+        while !queue.is_empty() {
             // prepare the message
             let (mut content, timestamp) = queue.front().unwrap().clone(); // take a copy, because we only pop it after sending
             let elapsed = timestamp.elapsed().unwrap().as_secs();
@@ -185,6 +185,6 @@ impl TelegramConfiguration {
     }
 
     pub fn has_pending(&self) -> bool {
-        self.queue.lock().unwrap().len() > 0
+        !self.queue.lock().unwrap().is_empty()
     }
 }

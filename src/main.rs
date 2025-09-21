@@ -19,10 +19,8 @@ async fn main() {
     let mut watcher =
         match notify::recommended_watcher(move |res: notify::Result<notify::Event>| match res {
             Ok(event) => {
-                if event.kind.is_modify() {
-                    if watcher_tx.try_send(()).is_err() {
-                        warn!("Failed to send file change event to main task?!");
-                    }
+                if event.kind.is_modify() && watcher_tx.try_send(()).is_err() {
+                    warn!("Failed to send file change event to main task?!");
                 }
             }
             Err(e) => {

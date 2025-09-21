@@ -55,13 +55,10 @@ impl MonitoringConfiguration {
             Some(v) => std::time::Duration::from_secs(v as u64),
             None => return Err("Missing 'interval' key".to_string()),
         };
-        let marker = match yaml["marker"].as_str() {
-            Some(v) => Some(v.to_string()),
-            None => None,
-        };
+        let marker = yaml["marker"].as_str().map(|v| v.to_string());
         let confidence = match yaml["confidence"].as_i64() {
             Some(v) => {
-                if v < 1 || v > std::u8::MAX as i64 {
+                if v < 1 || v > u8::MAX as i64 {
                     return Err("Confidence is out of bounds".to_string());
                 }
                 v as u8
@@ -74,7 +71,7 @@ impl MonitoringConfiguration {
         };
         let retry = match yaml["retry"].as_i64() {
             Some(v) => {
-                if v < 0 || v > std::u8::MAX as i64 {
+                if v < 0 || v > u8::MAX as i64 {
                     return Err("Retry is out of bounds".to_string());
                 }
                 v as u8
@@ -134,17 +131,14 @@ impl Endpoint {
         let healthy = std::sync::atomic::AtomicBool::new(false);
         let weight = match yaml["weight"].as_i64() {
             Some(v) => {
-                if v < 0 || v > 255 {
+                if !(0..=255).contains(&v) {
                     return Err("Weight must be between 0 and 255".to_string());
                 }
                 v as u8
             }
             None => 0,
         };
-        let sticky_duration = match yaml["sticky_duration"].as_i64() {
-            Some(v) => Some(std::time::Duration::from_secs(v as u64)),
-            None => None,
-        };
+        let sticky_duration = yaml["sticky_duration"].as_i64().map(|v| std::time::Duration::from_secs(v as u64));
         Ok(Self {
             healthy,
             dns,
@@ -214,7 +208,7 @@ impl Endpoint {
                 attempt += 1;
                 break match self.resolve_dns().await {
                     Ok(v) => {
-                        if v.len() == 0 {
+                        if v.is_empty() {
                             warn!("No DNS values for endpoint \"{}\"", self);
                             monitoring
                                 .last_problem
@@ -372,7 +366,7 @@ impl Endpoint {
                     res += &TelegramConfiguration::escape(&format!(", {}", detail));
                 }
             }
-            res += &TelegramConfiguration::escape(&format!(")",));
+            res += &TelegramConfiguration::escape(")");
         }
         res
     }
@@ -438,10 +432,10 @@ impl std::fmt::Display for ChangeReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EndpointHealthChanged { endpoint } => {
-                write!(f, "EndpointHealthChanged: {}", endpoint.to_string())
+                write!(f, "EndpointHealthChanged: {}", **endpoint)
             }
             Self::EndpointDnsValuesChanged { endpoint } => {
-                write!(f, "EndpointDnsValuesChanged: {}", endpoint.to_string())
+                write!(f, "EndpointDnsValuesChanged: {}", **endpoint)
             }
         }
     }
