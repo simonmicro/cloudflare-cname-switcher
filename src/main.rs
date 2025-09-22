@@ -6,11 +6,12 @@ use notify::{self, Watcher};
 #[tokio::main]
 async fn main() {
     // initialize logging
-    if std::env::var("RUST_LOG").is_err() {
-        // Set log level to info if not otherwise specified
-        std::env::set_var("RUST_LOG", "info");
-    }
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    info!(
+        "Starting {} v{}...",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION")
+    );
 
     let config_file_path = std::path::Path::new("config.yml");
 
