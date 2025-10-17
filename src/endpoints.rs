@@ -43,7 +43,7 @@ pub struct MonitoringConfiguration {
 }
 
 impl MonitoringConfiguration {
-    fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+    fn from_yaml(yaml: &yaml_rust::Yaml) -> Result<Self, String> {
         let uri = match yaml["uri"].as_str() {
             Some(v) => match v.parse() {
                 Ok(v) => v,
@@ -105,7 +105,7 @@ pub struct Endpoint {
 
 impl Endpoint {
     pub fn from_yaml(
-        yaml: &yaml_rust2::Yaml,
+        yaml: &yaml_rust::Yaml,
         metrics: std::sync::Arc<EndpointMetrics>,
     ) -> Result<Self, String> {
         let dns = match DnsConfiguration::from_yaml(&yaml["dns"]) {
@@ -118,7 +118,7 @@ impl Endpoint {
                 match MonitoringConfiguration::from_yaml(&yaml["monitoring"]) {
                     Ok(v) => v,
                     Err(e) => {
-                        return Err(format!("Failed to parse monitoring configuration: {:?}", e))
+                        return Err(format!("Failed to parse monitoring configuration: {:?}", e));
                     }
                 },
             ),
@@ -138,7 +138,9 @@ impl Endpoint {
             }
             None => 0,
         };
-        let sticky_duration = yaml["sticky_duration"].as_i64().map(|v| std::time::Duration::from_secs(v as u64));
+        let sticky_duration = yaml["sticky_duration"]
+            .as_i64()
+            .map(|v| std::time::Duration::from_secs(v as u64));
         Ok(Self {
             healthy,
             dns,
@@ -164,7 +166,10 @@ impl Endpoint {
                 unreachable!("Sleeping forever should never return");
             }
         };
-        assert!(monitoring.confidence > 0, "Confidence must be greater than 0, otherwise the endpoint will never be marked as unhealthy");
+        assert!(
+            monitoring.confidence > 0,
+            "Confidence must be greater than 0, otherwise the endpoint will never be marked as unhealthy"
+        );
         assert!(monitoring.uri.host().is_some(), "URI must have a host");
         self.change_health(&self_arc, None, false).await; // initial unhealthy state
 

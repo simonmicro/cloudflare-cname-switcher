@@ -2,7 +2,6 @@ use crate::endpoints::{ChangeReason, Endpoint, EndpointArc, EndpointMetrics};
 use crate::integrations::{cloudflare::CloudflareConfiguration, telegram::TelegramConfiguration};
 use itertools::Itertools;
 use log::{debug, error, info, warn};
-use yaml_rust2;
 
 pub struct Ingress {
     /// FQDN
@@ -15,7 +14,7 @@ pub struct Ingress {
 }
 
 impl Ingress {
-    pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+    pub fn from_yaml(yaml: &yaml_rust::Yaml) -> Result<Self, String> {
         let registry = prometheus::Registry::new();
         let record = match yaml["record"].as_str() {
             Some(v) => v.to_string(),
@@ -78,7 +77,7 @@ impl Ingress {
     }
 
     pub fn from_config(yaml_str: &str) -> Result<Self, String> {
-        let yaml = match yaml_rust2::YamlLoader::load_from_str(yaml_str) {
+        let yaml = match yaml_rust::YamlLoader::load_from_str(yaml_str) {
             Ok(v) => v,
             Err(e) => {
                 return Err(format!("{}", e));

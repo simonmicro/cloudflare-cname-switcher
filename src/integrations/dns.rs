@@ -35,7 +35,7 @@ pub struct DnsConfiguration {
 }
 
 impl DnsConfiguration {
-    pub fn from_yaml(yaml: &yaml_rust2::Yaml) -> Result<Self, String> {
+    pub fn from_yaml(yaml: &yaml_rust::Yaml) -> Result<Self, String> {
         let record = yaml["record"]
             .as_str()
             .ok_or("record is not a string")?

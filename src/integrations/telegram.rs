@@ -13,7 +13,7 @@ pub struct TelegramConfiguration {
 
 impl TelegramConfiguration {
     pub fn from_yaml(
-        yaml: &yaml_rust2::Yaml,
+        yaml: &yaml_rust::Yaml,
         registry: &prometheus::Registry,
     ) -> Result<Self, String> {
         let silence_until = match yaml["initial_silence"].as_i64() {

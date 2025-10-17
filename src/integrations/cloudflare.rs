@@ -60,7 +60,7 @@ pub struct CloudflareConfiguration {
 
 impl CloudflareConfiguration {
     pub fn from_yaml(
-        yaml: &yaml_rust2::Yaml,
+        yaml: &yaml_rust::Yaml,
         registry: &prometheus::Registry,
     ) -> Result<Self, String> {
         let zone_id = yaml["zone_id"]
