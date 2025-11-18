@@ -1,6 +1,6 @@
 [package]
 name = "cloudflare-cname-switcher"
-version = "2.2.10"
+version = "2.2.11"
 edition = "2024"
 
 [profile.release]
