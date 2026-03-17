@@ -1,6 +1,6 @@
 [package]
 name = "cloudflare-cname-switcher"
-version = "2.2.15"
+version = "2.2.16"
 edition = "2024"
 
 [profile.release]
@@ -9,7 +9,7 @@ lto = true
 
 [dependencies]
 hyper = { version = "1.8.1", features = ["client", "http1", "server"] }
-tokio = { version = "1.49.0", features = ["full"] }
+tokio = { version = "1.50.0", features = ["full"] }
 notify = "8.2.0"
 prometheus = "0.14.0"
 rustdns = "0.4.0"
