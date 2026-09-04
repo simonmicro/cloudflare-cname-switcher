@@ -1,5 +1,7 @@
 use crate::integrations::http::HyperHttpClient;
-use crate::integrations::{dns::DnsConfiguration, telegram::TelegramConfiguration};
+use crate::integrations::{
+    dns::DnsConfiguration, ntfy::NtfyConfiguration, telegram::TelegramConfiguration,
+};
 use log::{debug, error, warn};
 
 #[derive(Debug)]
@@ -372,6 +374,31 @@ impl Endpoint {
                 }
             }
             res += &TelegramConfiguration::escape(")");
+        }
+        res
+    }
+
+    pub fn to_ntfy_string(&self) -> String {
+        let healthy = self.healthy.load(std::sync::atomic::Ordering::Relaxed);
+        let mut res = match healthy {
+            true => format!("✅ `{}`", NtfyConfiguration::escape(&self.name)),
+            false => format!("❌ `{}`", NtfyConfiguration::escape(&self.name)),
+        };
+        if let Some(monitoring) = self.monitoring.as_ref() {
+            res +=
+                &NtfyConfiguration::escape(&format!(" (every {}s", monitoring.interval.as_secs(),));
+            if monitoring.confidence > 1 {
+                res += &NtfyConfiguration::escape(&format!(
+                    ", confidence of {}",
+                    monitoring.confidence
+                ));
+            }
+            if !healthy {
+                if let Some(detail) = monitoring.last_problem.lock().unwrap().as_ref() {
+                    res += &NtfyConfiguration::escape(&format!(", {}", detail));
+                }
+            }
+            res += &NtfyConfiguration::escape(")");
         }
         res
     }

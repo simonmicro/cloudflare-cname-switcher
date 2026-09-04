@@ -1,5 +1,7 @@
 use crate::endpoints::{ChangeReason, Endpoint, EndpointArc, EndpointMetrics};
-use crate::integrations::{cloudflare::CloudflareConfiguration, telegram::TelegramConfiguration};
+use crate::integrations::{
+    cloudflare::CloudflareConfiguration, ntfy::NtfyConfiguration, telegram::TelegramConfiguration,
+};
 use itertools::Itertools;
 use log::{debug, error, info, warn};
 
@@ -10,6 +12,7 @@ pub struct Ingress {
     gauge_endpoint_selected: Box<prometheus::IntGaugeVec>,
     cloudflare: CloudflareConfiguration,
     telegram: Option<TelegramConfiguration>,
+    ntfy: Option<NtfyConfiguration>,
     pub registry: std::sync::Arc<prometheus::Registry>,
 }
 
@@ -66,12 +69,22 @@ impl Ingress {
                 }
             },
         };
+        let ntfy = match yaml["ntfy"].is_null() {
+            true => None,
+            false => match NtfyConfiguration::from_yaml(&yaml["ntfy"], &registry) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    return Err(format!("Failed to parse ntfy: {}", e));
+                }
+            },
+        };
         Ok(Self {
             record,
             endpoints,
             gauge_endpoint_selected,
             cloudflare,
             telegram,
+            ntfy,
             registry: registry.into(),
         })
     }
@@ -104,6 +117,10 @@ impl Ingress {
 
     pub fn has_telegram(&self) -> bool {
         self.telegram.is_some()
+    }
+
+    pub fn has_ntfy(&self) -> bool {
+        self.ntfy.is_some()
     }
 
     /// This implements the logic of the ingress controller. Here are a few scenarios:
@@ -199,6 +216,21 @@ impl Ingress {
                 } => {
                     debug!("Telegram has pending messages");
                     self.telegram.as_ref().unwrap().send().await;
+                    continue;
+                }
+                // IF ntfy has pending messages, sleep 30 seconds and then wake up
+                _ = match self.ntfy.as_ref() {
+                    Some(ntfy) => {
+                        if ntfy.has_pending() {
+                            tokio::time::sleep(std::time::Duration::from_secs(30))
+                        } else {
+                            tokio::time::sleep(std::time::Duration::MAX)
+                        }
+                    },
+                    None => tokio::time::sleep(std::time::Duration::MAX)
+                } => {
+                    debug!("Ntfy has pending messages");
+                    self.ntfy.as_ref().unwrap().send().await;
                     continue;
                 }
                 // IF any endpoint exited, we will wakeup on that
@@ -333,6 +365,27 @@ impl Ingress {
                         message.push_str(&format!("\n  {}", endpoint.to_telegram_string()));
                     }
                     telegram.queue_and_send(&message).await;
+                }
+            }
+
+            if let Some(ntfy) = self.ntfy.as_ref() {
+                // queue telegram notification IF primary endpoint changed (not the address, but the record-names of the selected endpoints)
+                if last_prioritized_endpoint.is_none()
+                    || last_prioritized_endpoint.as_ref().unwrap().0 != new_prioritized_endpoint.0
+                {
+                    debug!("Sending ntfy notification due to primary endpoint change");
+                    let mut message =
+                        format!("Ingress changed to *{}*.", &new_prioritized_endpoint.0.name);
+                    // sort all endpoints by weight
+                    let mut sorted_endpoints = std::collections::HashMap::<u8, &EndpointArc>::new();
+                    for endpoint in &self.endpoints {
+                        sorted_endpoints.insert(endpoint.weight, endpoint);
+                    }
+                    // add all endpoints to the message
+                    for (_, endpoint) in sorted_endpoints.iter().sorted_by_key(|(k, _)| *k) {
+                        message.push_str(&format!("\n  {}", endpoint.to_ntfy_string()));
+                    }
+                    ntfy.queue_and_send(&message).await;
                 }
             }
 

@@ -31,3 +31,6 @@ telegram: # optional, set to null to disable
   initial_silence: null # optional, in seconds, to silence notifications after startup while monitoring is stabilizing
   token: token # set the bot token
   chat_id: 123456978 # set the chat/channel/group id
+ntfy: # optional, set to null to disable
+  initial_silence: null # optional, in seconds, to silence notifications after startup while monitoring is stabilizing
+  uri: https://ntfy.sh/your_channel_id

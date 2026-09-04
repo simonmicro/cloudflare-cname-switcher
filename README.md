@@ -30,7 +30,7 @@ You place this program on an external machine, which will test the endpoint reac
   * TTL is then forced to the lowest TTL out of all mixed endpoints, so clients will continue to mix between all the endpoints (as none expire earlier)
 * Cloudflare support :P
   * A/AAAA, CNAME records as _ingress_ or _endpoint_
-* Telegram notifications
+* Telegram/Ntfy notifications
   * Automatic retry on failure
   * Details about _endpoint_ reachability and _ingress_ record
 * Prometheus metrics (via `/metrics`)

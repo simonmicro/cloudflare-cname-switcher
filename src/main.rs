@@ -86,6 +86,9 @@ async fn main() {
         if ingress.has_telegram() {
             info!("Telegram notifications are enabled.");
         }
+        if ingress.has_ntfy() {
+            info!("Ntfy notifications are enabled.");
+        }
 
         // setup file change handler
         if let Some(watcher) = watcher.as_mut() {
