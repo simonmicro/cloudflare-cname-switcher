@@ -60,7 +60,7 @@ impl Ingress {
                 return Err(format!("Failed to parse cloudflare: {}", e));
             }
         };
-        let telegram = match yaml["telegram"].is_null() {
+        let telegram = match yaml["telegram"].is_null() || yaml["telegram"].is_badvalue() {
             true => None,
             false => match TelegramConfiguration::from_yaml(&yaml["telegram"], &registry) {
                 Ok(v) => Some(v),
@@ -69,7 +69,7 @@ impl Ingress {
                 }
             },
         };
-        let ntfy = match yaml["ntfy"].is_null() {
+        let ntfy = match yaml["ntfy"].is_null() || yaml["ntfy"].is_badvalue() {
             true => None,
             false => match NtfyConfiguration::from_yaml(&yaml["ntfy"], &registry) {
                 Ok(v) => Some(v),
