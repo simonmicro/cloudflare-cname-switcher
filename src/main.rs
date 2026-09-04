@@ -1,17 +1,24 @@
 use cloudflare_cname_switcher::http_server::HttpServer;
 use cloudflare_cname_switcher::ingress::Ingress;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use notify::{self, Watcher};
 
 #[tokio::main]
 async fn main() {
     // initialize logging
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    info!(
-        "Starting {} v{}...",
+    debug!(
+        "Starting {}@{}...",
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION")
     );
+
+    // don't judge: I wanted a banner.
+    info!("  ______________");
+    info!(" / ___/ ___/ __/");
+    info!("/ /__/ /___\\ \\");
+    info!("\\___/\\___/___/ v{}", env!("CARGO_PKG_VERSION"));
+    info!("");
 
     let config_file_path = std::path::Path::new("config.yml");
 
