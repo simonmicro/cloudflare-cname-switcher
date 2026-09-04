@@ -125,11 +125,7 @@ impl Endpoint {
                 },
             ),
         };
-        let name = yaml["alias"]
-            .as_str()
-            .or_else(|| Some(&dns.record))
-            .unwrap()
-            .to_string();
+        let name = yaml["alias"].as_str().unwrap_or(&dns.record).to_string();
         let healthy = std::sync::atomic::AtomicBool::new(false);
         let weight = match yaml["weight"].as_i64() {
             Some(v) => {
@@ -309,9 +305,9 @@ impl Endpoint {
                     }
                 };
 
-                if monitoring.marker.is_some() {
+                if let Some(marker) = monitoring.marker.as_ref() {
                     // Stream the body, writing each frame to stdout as it arrives
-                    if response.contains(monitoring.marker.as_ref().unwrap()) {
+                    if response.contains(marker) {
                         confidence += 1;
                     } else {
                         confidence = 0;
