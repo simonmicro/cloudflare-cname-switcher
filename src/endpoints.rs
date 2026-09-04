@@ -237,11 +237,15 @@ impl Endpoint {
                 };
             };
             if last_dns_values != new_dns_values {
-                change_tx
+                if change_tx
                     .send(ChangeReason::EndpointDnsValuesChanged {
                         endpoint: self_arc.clone(),
                     })
-                    .unwrap();
+                    .is_err()
+                {
+                    error!("Channel closed while processing DNS value change");
+                    return;
+                }
             }
 
             // update last_dns_values
