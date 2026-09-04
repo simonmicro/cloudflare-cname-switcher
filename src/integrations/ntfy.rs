@@ -4,6 +4,7 @@ use log::{debug, warn};
 /// NEVER allow debug output of this struct, as it contains sensitive information
 pub struct NtfyConfiguration {
     send_client: HyperHttpClient,
+    token: Option<String>,
     queue: std::sync::Mutex<std::collections::LinkedList<(String, std::time::SystemTime)>>,
     gauge_send_duration: Option<Box<prometheus::Gauge>>,
     gauge_queue_amount: Option<Box<prometheus::IntGauge>>,
@@ -28,6 +29,7 @@ impl NtfyConfiguration {
             .as_str()
             .ok_or("uri is not a string")?
             .to_string();
+        let token = yaml["token"].as_str().map(|s| s.to_string());
         let gauge_send_duration = Box::new(
             prometheus::Gauge::new("ntfy_send_seconds", "Duration of last message send").unwrap(),
         );
@@ -39,6 +41,7 @@ impl NtfyConfiguration {
         registry.register(gauge_queue_amount.clone()).unwrap();
         Ok(Self::new(
             uri,
+            token,
             silence_until,
             Some(gauge_send_duration),
             Some(gauge_queue_amount),
@@ -47,6 +50,7 @@ impl NtfyConfiguration {
 
     pub fn new(
         uri: String,
+        token: Option<String>,
         silence_until: Option<std::time::SystemTime>,
         gauge_send_duration: Option<Box<prometheus::Gauge>>,
         gauge_queue_amount: Option<Box<prometheus::IntGauge>>,
@@ -58,6 +62,7 @@ impl NtfyConfiguration {
                 0,
                 None,
             ),
+            token,
             queue: std::sync::Mutex::new(std::collections::LinkedList::new()),
             gauge_send_duration,
             gauge_queue_amount,
@@ -126,8 +131,15 @@ impl NtfyConfiguration {
             }
             debug!("Sending a message: {}", content);
 
+            // create the http builder with header
+            let builder = match &self.token.as_ref() {
+                &Some(token) => self
+                    .send_client
+                    .builder()
+                    .header(hyper::header::AUTHORIZATION, format!("Bearer {}", token)),
+                None => self.send_client.builder(),
+            };
             // create the body
-            let builder = self.send_client.builder();
             let request = builder
                 .header(hyper::header::CONTENT_TYPE, "text/markdown")
                 .method(hyper::http::Method::POST)
@@ -171,18 +183,29 @@ mod tests {
     const PUBLIC_INSTANCE_URL: &str = "https://ntfy.sh/ccs_unit_test";
     const TEST_MESSAGE: &str = "# UNIT_TEST_IGNORE_THIS\n❌ `primary` (every 10s, confidence of 3, HTTP error: Timeout during Connect)\n✅ `failover`\n\n**bold** or _**combined italic**_ or [linked](https://example.com)";
 
-    #[tokio::test]
-    async fn test_push_to_public_instance() {
-        let ntfy = NtfyConfiguration::new(PUBLIC_INSTANCE_URL.to_string(), None, None, None);
-        ntfy.queue_and_send(TEST_MESSAGE).await;
-        assert!(ntfy.queue.lock().unwrap().is_empty());
+    fn get_test_config_from_env() -> NtfyConfiguration {
+        NtfyConfiguration::new(
+            std::env::var("NTFY_URI").unwrap_or(PUBLIC_INSTANCE_URL.to_string()),
+            std::env::var("NTFY_TOKEN").ok(),
+            None,
+            None,
+            None,
+        )
     }
 
     #[tokio::test]
-    async fn test_push_to_public_instance_escape() {
-        let ntfy = NtfyConfiguration::new(PUBLIC_INSTANCE_URL.to_string(), None, None, None);
-        ntfy.queue_and_send(&NtfyConfiguration::escape(TEST_MESSAGE))
+    async fn test_push_to_instance() {
+        let config = get_test_config_from_env();
+        config.queue_and_send(TEST_MESSAGE).await;
+        assert!(config.queue.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_push_to_instance_escape() {
+        let config = get_test_config_from_env();
+        config
+            .queue_and_send(&NtfyConfiguration::escape(TEST_MESSAGE))
             .await;
-        assert!(ntfy.queue.lock().unwrap().is_empty());
+        assert!(config.queue.lock().unwrap().is_empty());
     }
 }
