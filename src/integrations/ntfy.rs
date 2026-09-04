@@ -27,10 +27,13 @@ impl NtfyConfiguration {
             }
             None => None,
         };
-        let uri = yaml["uri"]
-            .as_str()
-            .ok_or("uri is not a string")?
-            .to_string();
+        let uri = match yaml["uri"].as_str() {
+            Some(v) => match v.parse() {
+                Ok(v) => v,
+                Err(e) => return Err(format!("Failed to parse URI: {:?}", e)),
+            },
+            None => return Err("Missing 'uri' key".to_string()),
+        };
         let token = yaml["token"].as_str().map(|s| s.to_string());
         let priority_bad = match yaml["priority_bad"].as_i64() {
             Some(x) => {
@@ -71,7 +74,7 @@ impl NtfyConfiguration {
     }
 
     pub fn new(
-        uri: String,
+        uri: hyper::Uri,
         token: Option<String>,
         priority_bad: u8,
         priority_good: u8,
@@ -80,12 +83,7 @@ impl NtfyConfiguration {
         gauge_queue_amount: Option<Box<prometheus::IntGauge>>,
     ) -> Self {
         Self {
-            send_client: HyperHttpClient::new(
-                uri.parse().unwrap(),
-                std::time::Duration::from_secs(10),
-                0,
-                None,
-            ),
+            send_client: HyperHttpClient::new(uri, std::time::Duration::from_secs(10), 0, None),
             token,
             priority_bad,
             priority_good,
@@ -219,7 +217,10 @@ mod tests {
 
     fn get_test_config_from_env() -> NtfyConfiguration {
         NtfyConfiguration::new(
-            std::env::var("NTFY_URI").unwrap_or(PUBLIC_INSTANCE_URL.to_string()),
+            std::env::var("NTFY_URI")
+                .unwrap_or(PUBLIC_INSTANCE_URL.to_string())
+                .parse()
+                .expect("valid URI"),
             std::env::var("NTFY_TOKEN").ok(),
             4, // priority: high
             3, // priority: default
