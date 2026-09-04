@@ -255,7 +255,16 @@ impl Endpoint {
             let address_override = match self.dns.record == monitoring.uri.host().unwrap() {
                 true => {
                     debug!("Monitoring {} via address-override", monitoring.uri);
-                    Some(*last_dns_values.iter().next().unwrap())
+                    Some(match last_dns_values.iter().next() {
+                        Some(v) => *v,
+                        None => {
+                            error!(
+                                "Monitoring {} via address-override not possible, as no address was resolved!",
+                                monitoring.uri
+                            );
+                            return;
+                        }
+                    })
                 }
                 false => {
                     debug!("Monitoring {} via DNS resolution", monitoring.uri);
