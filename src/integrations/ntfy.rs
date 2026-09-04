@@ -5,7 +5,9 @@ use log::{debug, warn};
 pub struct NtfyConfiguration {
     send_client: HyperHttpClient,
     token: Option<String>,
-    queue: std::sync::Mutex<std::collections::LinkedList<(String, std::time::SystemTime)>>,
+    priority_bad: u8,
+    priority_good: u8,
+    queue: std::sync::Mutex<std::collections::LinkedList<(String, bool, std::time::SystemTime)>>,
     gauge_send_duration: Option<Box<prometheus::Gauge>>,
     gauge_queue_amount: Option<Box<prometheus::IntGauge>>,
     silence_until: Option<std::time::SystemTime>,
@@ -30,6 +32,24 @@ impl NtfyConfiguration {
             .ok_or("uri is not a string")?
             .to_string();
         let token = yaml["token"].as_str().map(|s| s.to_string());
+        let priority_bad = match yaml["priority_bad"].as_i64() {
+            Some(x) => {
+                if !(1..5).contains(&x) {
+                    return Err("priority_bad must be an integer in range [1, 5]".to_string());
+                }
+                x as u8
+            }
+            None => 4, // high
+        };
+        let priority_good = match yaml["priority_good"].as_i64() {
+            Some(x) => {
+                if !(1..5).contains(&x) {
+                    return Err("priority_good must be an integer in range [1, 5]".to_string());
+                }
+                x as u8
+            }
+            None => 3, // default
+        };
         let gauge_send_duration = Box::new(
             prometheus::Gauge::new("ntfy_send_seconds", "Duration of last message send").unwrap(),
         );
@@ -42,6 +62,8 @@ impl NtfyConfiguration {
         Ok(Self::new(
             uri,
             token,
+            priority_bad,
+            priority_good,
             silence_until,
             Some(gauge_send_duration),
             Some(gauge_queue_amount),
@@ -51,6 +73,8 @@ impl NtfyConfiguration {
     pub fn new(
         uri: String,
         token: Option<String>,
+        priority_bad: u8,
+        priority_good: u8,
         silence_until: Option<std::time::SystemTime>,
         gauge_send_duration: Option<Box<prometheus::Gauge>>,
         gauge_queue_amount: Option<Box<prometheus::IntGauge>>,
@@ -63,6 +87,8 @@ impl NtfyConfiguration {
                 None,
             ),
             token,
+            priority_bad,
+            priority_good,
             queue: std::sync::Mutex::new(std::collections::LinkedList::new()),
             gauge_send_duration,
             gauge_queue_amount,
@@ -85,7 +111,7 @@ impl NtfyConfiguration {
         buffer
     }
 
-    pub async fn queue_and_send(&self, message: &str) {
+    pub async fn queue_and_send(&self, message: &str, good: bool) {
         // check if we are in silence mode
         if let Some(silence_until) = &self.silence_until {
             if *silence_until > std::time::SystemTime::now() {
@@ -95,7 +121,7 @@ impl NtfyConfiguration {
         // add message to buffer
         {
             let mut queue = self.queue.lock().unwrap();
-            queue.push_back((message.to_string(), std::time::SystemTime::now()));
+            queue.push_back((message.to_string(), good, std::time::SystemTime::now()));
             if let Some(gauge) = &self.gauge_queue_amount {
                 gauge.set(queue.len() as i64);
             }
@@ -115,7 +141,7 @@ impl NtfyConfiguration {
         // while buffer not empty, try to send the message
         while !queue.is_empty() {
             // prepare the message
-            let (mut content, timestamp) = queue.front().unwrap().clone(); // take a copy, because we only pop it after sending
+            let (mut content, good, timestamp) = queue.front().unwrap().clone(); // take a copy, because we only pop it after sending
             let elapsed = timestamp.elapsed().unwrap().as_secs();
             let timestamp: chrono::DateTime<chrono::Utc> = timestamp.into();
             if elapsed > 10 {
@@ -142,6 +168,14 @@ impl NtfyConfiguration {
             // create the body
             let request = builder
                 .header(hyper::header::CONTENT_TYPE, "text/markdown")
+                .header(
+                    "X-Priority",
+                    match good {
+                        true => self.priority_good,
+                        false => self.priority_bad,
+                    }
+                    .to_string(),
+                )
                 .method(hyper::http::Method::POST)
                 .body(http_body_util::Full::<bytes::Bytes>::from(
                     //"test".to_string().into_bytes(),
@@ -187,6 +221,8 @@ mod tests {
         NtfyConfiguration::new(
             std::env::var("NTFY_URI").unwrap_or(PUBLIC_INSTANCE_URL.to_string()),
             std::env::var("NTFY_TOKEN").ok(),
+            4, // priority: high
+            3, // priority: default
             None,
             None,
             None,
@@ -194,17 +230,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_push_to_instance() {
+    async fn test_good_push() {
         let config = get_test_config_from_env();
-        config.queue_and_send(TEST_MESSAGE).await;
+        config.queue_and_send(TEST_MESSAGE, true).await;
         assert!(config.queue.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
-    async fn test_push_to_instance_escape() {
+    async fn test_bad_push() {
+        let config = get_test_config_from_env();
+        config.queue_and_send(TEST_MESSAGE, false).await;
+        assert!(config.queue.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_escaped_push() {
         let config = get_test_config_from_env();
         config
-            .queue_and_send(&NtfyConfiguration::escape(TEST_MESSAGE))
+            .queue_and_send(&NtfyConfiguration::escape(TEST_MESSAGE), true)
             .await;
         assert!(config.queue.lock().unwrap().is_empty());
     }

@@ -385,7 +385,11 @@ impl Ingress {
                     for (_, endpoint) in sorted_endpoints.iter().sorted_by_key(|(k, _)| *k) {
                         message.push_str(&format!("\n  {}", endpoint.to_ntfy_string()));
                     }
-                    ntfy.queue_and_send(&message).await;
+                    let good = self
+                        .endpoints
+                        .iter()
+                        .all(|e| e.healthy.load(std::sync::atomic::Ordering::Relaxed));
+                    ntfy.queue_and_send(&message, good).await;
                 }
             }
 

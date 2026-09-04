@@ -35,3 +35,5 @@ ntfy: # optional, set to null to disable
   initial_silence: null # optional, in seconds, to silence notifications after startup while monitoring is stabilizing
   uri: https://ntfy.sh/your_channel_id
   token: null # optional, an Ntfy bearer authentication token
+  priority_bad: null # optional, if any endpoint in the message is not healthy, defaults to 4 (high)
+  priority_good: null # optional, defaults to 3 (default)
